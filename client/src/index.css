@@ -1,0 +1,208 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors — "Ivorian Service Pulse" design system */
+  --color-primary: #15803d;
+  --color-primary-deep: #166534;
+  --color-primary-soft: #dcfce7;
+  --color-accent: #f97316;
+  --color-surface: #f8f9ff;
+  --color-surface-dim: #d0dbed;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e6eeff;
+  --color-surface-container-high: #dee9fc;
+  --color-surface-container-highest: #d9e3f6;
+  --color-on-surface: #121c2a;
+  --color-on-surface-variant: #3e4a3d;
+  --color-outline: #647464;
+  --color-outline-variant: #bdcaba;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #00873a;
+  --color-on-primary-container: #f7fff2;
+  --color-secondary: #1f6c3a;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #a4f1b2;
+  --color-on-secondary-container: #24703e;
+  --color-surface-tint: #006e2d;
+  --color-primary-fixed-dim: #62df7d;
+  --color-whatsapp: #25d366;
+  --color-error: #dc2626;
+
+  /* Fonts */
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  /* Shadows */
+  --shadow-raised: 0 2px 8px rgba(22, 101, 52, 0.08);
+  --shadow-floating: 0 8px 20px rgba(22, 101, 52, 0.12);
+
+  /* Spacing */
+  /* NOTE: ne pas définir de tokens --spacing-lg/-xl ici : ils hijackent
+     les utilitaires Tailwind v4 max-w-lg/max-w-xl (cf. bug recherche 24px). */
+
+  /* Accordions (shadcn/ui, Radix) */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+}
+
+.material-symbols-outlined {
+  font-variation-settings:
+    "FILL" 1,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 24;
+  user-select: none;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Supprime le délai de 300ms des taps sur mobile (interactions directes). */
+button,
+a,
+input,
+select,
+textarea,
+label {
+  touch-action: manipulation;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-on-surface);
+  background-color: var(--color-surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Hide horizontal scrollbar on category slider */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Marquee (Magic UI) — défilement infini horizontal */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100% - var(--gap)));
+  }
+}
+
+.animate-marquee {
+  animation: marquee var(--duration, 40s) linear infinite;
+}
+
+/* Pause au survol — règle plate (hors couche), même plan de cascade que
+   .animate-marquee mais spécificité supérieure : les variantes générées
+   par Tailwind (couche utilities) perdraient ici. */
+.marquee-pause-on-hover:hover .animate-marquee {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+  }
+}
+
+/* Accordion (shadcn/ui) — ouverture/fermeture Radix */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+/* AuroraText (Magic UI) — dégradé animé clippé sur le texte */
+@keyframes aurora {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+.animate-aurora {
+  animation: aurora var(--aurora-duration, 10s) linear infinite;
+}
+
+/* Shine sweep (Magic UI, animated-shiny-text) — bande lumineuse qui balaie le mot.
+   Calque superposé : le mot de base reste plein (contraste intact), seul le calque
+   clippé porte la bande animée. Figé par la règle reduced-motion globale. */
+@keyframes shine-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.loader-shine {
+  background-image: linear-gradient(
+    100deg,
+    transparent 0%,
+    transparent 38%,
+    rgba(255, 255, 255, 0.95) 50%,
+    transparent 62%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine-sweep 2.6s linear infinite;
+}
