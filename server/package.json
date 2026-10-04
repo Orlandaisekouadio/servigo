@@ -10,7 +10,7 @@
     "seed": "node seed/seed.js",
     "promote-admin": "node scripts/promote-admin.js",
     "bootstrap-admin": "node scripts/bootstrap-admin.js",
-    "build": "echo 'Build completed successfully' && node src/server.js"
+    "build": "echo 'Build completed successfully'"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
