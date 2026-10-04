@@ -52,6 +52,30 @@ export async function createReview(req, res, next) {
   }
 }
 
+// Avis récemment publiés, pour la vitrine publique (bandeau « Avis clients » de
+// l'accueil). Public par nature : c'est la preuve sociale affichée en page
+// d'accueil. Seuls les avis rattachés à un profil visible sont repris, et le nom
+// de l'artisan accompagne chaque avis pour que le visiteur puisse le retrouver.
+export async function listRecentReviews(req, res, next) {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 6, 1), 12);
+    const data = await Review.find()
+      .populate('artisan', 'slug name role avatarUrl hidden')
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+    // Le populate peut rapporter un artisan masqué par l'admin : on l'écarte
+    // plutôt que de laisser fuiter le nom d'un profil retiré de la vitrine.
+    return res.json({
+      ok: true,
+      data: data.filter((r) => r.artisan && r.artisan.hidden !== true),
+      total: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function listMyReviews(req, res, next) {
   try {
     const data = await Review.find({ author: req.user._id })

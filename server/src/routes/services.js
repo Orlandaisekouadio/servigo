@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Service } from '../models/Service.js';
-import { COMMUNES } from '../config/referentials.js';
+import { Commune } from '../models/Commune.js';
 
 const router = Router();
 
@@ -25,12 +25,6 @@ const router = Router();
  *     responses:
  *       200: { description: 'Métier', schema: { type: object, properties: { ok: {type: boolean}, data: { $ref: '#/components/schemas/Service' } } } }
  *       404: { $ref: '#/components/responses/404' }
- * /api/referentials:
- *   get:
- *     tags: [Catalogue]
- *     summary: Listes de référence (communes)
- *     responses:
- *       200: { description: 'Communes', schema: { type: object, properties: { ok: {type: boolean}, data: { type: object, properties: { communes: { type: array, items: { type: string } } } } } } }
  */
 router.get('/', async (_req, res, next) => {
   try {
@@ -51,10 +45,32 @@ router.get('/:slug', async (req, res, next) => {
   }
 });
 
-// Référentiels statiques — GET /api/referentials (communes)
-export function referentialsRouter() {
+// Catalogue des communes — GET /api/communes
+// Source unique des listes déroulantes (inscription, recherche). Géré par
+// l'admin comme Service : ajouter une commune ne demande pas de déploiement.
+/**
+ * @openapi
+ * /api/communes:
+ *   get:
+ *     tags: [Catalogue]
+ *     summary: Catalogue des communes desservies
+ *     description: 'Les communes désactivées par l''admin en sont exclues.'
+ *     responses:
+ *       200: { description: 'Communes', schema: { type: object, properties: { ok: {type: boolean}, data: { type: array, items: { $ref: '#/components/schemas/Commune' } } } } }
+ */
+export function communesRouter() {
   const r = Router();
-  r.get('/', (_req, res) => res.json({ ok: true, data: { communes: COMMUNES } }));
+  r.get('/', async (_req, res, next) => {
+    try {
+      const data = await Commune.find({ active: { $ne: false } })
+        .sort({ position: 1, name: 1 })
+        .select('name position')
+        .lean();
+      return res.json({ ok: true, data, total: data.length });
+    } catch (err) {
+      next(err);
+    }
+  });
   return r;
 }
 

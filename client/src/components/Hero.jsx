@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'motion/react'
-import { heroImage } from '../data/categories'
-import { matchCommune } from '../data/search'
+import { heroImage } from '../data/images'
+import { matchCommune } from '../lib/searchText'
+import { useCommunes } from '../hooks/useReferentials'
 import TextAnimate from './ui/text-animate'
 import AuroraText from './ui/aurora-text'
 
@@ -20,12 +21,15 @@ export default function Hero() {
   const reduce = useReducedMotion()
   const [service, setService] = useState('')
   const [lieu, setLieu] = useState('')
+  // Communes issues du catalogue administrable : une commune ajoutée par l'admin
+  // devient détectable ici sans modification de code.
+  const { valeur: communes } = useCommunes()
 
   const submitSearch = (e) => {
     e.preventDefault()
     const params = new URLSearchParams()
     let q = service.trim()
-    const commune = matchCommune(lieu)
+    const commune = matchCommune(lieu, communes)
     if (commune) {
       params.set('commune', commune)
     } else if (lieu.trim()) {

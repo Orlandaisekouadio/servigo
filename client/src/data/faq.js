@@ -1,4 +1,4 @@
-// Questions fréquentes — FAQ de démonstration (vitrine statique).
+// Questions fréquentes.
 export const faqItems = [
   {
     id: 'trouver',
@@ -13,10 +13,10 @@ export const faqItems = [
       "Les artisans vérifiés portent le badge « Vérifié » sur leur profil. La vérification passe par une confirmation de l'identité et des références de chantiers, avant l'affichage sur la plateforme. Privilégiez-les pour vos travaux importants.",
   },
   {
-    id: 'devis',
-    question: 'La demande de devis est-elle gratuite ?',
+    id: 'prix',
+    question: 'Combien ça coûte ?',
     answer:
-      'Oui, la demande de devis est entièrement gratuite et sans engagement. Discutez du périmètre, du prix et des délais directement avec l’artisan, puis validez ensemble avant le début des travaux.',
+      "ServiGo ne publie aucun tarif et ne prélève rien : c'est l'artisan qui annonce son prix, après avoir évalué le travail. Exchangez avec lui par téléphone ou WhatsApp pour connaître le montant exact avant de vous engager.",
   },
   {
     id: 'paiement',

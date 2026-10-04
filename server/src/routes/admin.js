@@ -6,6 +6,10 @@ import {
   createService,
   updateService,
   deleteService,
+  listCommunes,
+  createCommune,
+  updateCommune,
+  deleteCommune,
   listArtisans,
   getArtisan,
   updateArtisan,
@@ -252,6 +256,12 @@ router.get('/services', listServices);
 router.post('/services', createService);
 router.patch('/services/:id', updateService);
 router.delete('/services/:id', deleteService);
+
+// Catalogue des communes
+router.get('/communes', listCommunes);
+router.post('/communes', createCommune);
+router.patch('/communes/:id', updateCommune);
+router.delete('/communes/:id', deleteCommune);
 
 // Validation et modération des profils
 router.get('/artisans', listArtisans);

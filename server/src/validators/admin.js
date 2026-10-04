@@ -35,6 +35,29 @@ export const updateServiceSchema = z
   .partial()
   .refine((d) => Object.keys(d).length > 0, { message: 'Aucune modification envoyée.' });
 
+// --- Communes -----------------------------------------------------------
+
+// Le nom est la clé métier : ArtisanProfile.commune le stocke en clair et la
+// recherche le compare exactement. Il n'est donc pas modifiable.
+export const createCommuneSchema = z.object({
+  name: z.string().trim().min(2, 'Indiquez le nom de la commune.').max(80),
+  position: z.coerce.number().int().min(0).max(999).optional().default(100),
+});
+
+export const updateCommuneSchema = z
+  .object({
+    active: z.boolean().optional(),
+    // Le verrouillage protège les profils existants ; seul l'admin le pose ou
+    // le retire, pour reclasser une commune qui n'accueille plus personne.
+    locked: z.boolean().optional(),
+    position: z.coerce.number().int().min(0).max(999).optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, { message: 'Aucune modification envoyée.' });
+
+export const renameCommuneSchema = z.object({
+  name: z.string().trim().min(2, 'Indiquez le nom de la commune.').max(80),
+});
+
 // --- Artisans -----------------------------------------------------------
 
 export const listArtisansQuerySchema = listQuerySchema.extend({

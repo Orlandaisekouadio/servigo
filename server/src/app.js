@@ -10,7 +10,7 @@ import { dbStatus } from './config/db.js';
 import { buildOpenApiSpec } from './config/swagger.js';
 import authRoutes from './routes/auth.js';
 import artisanRoutes from './routes/artisans.js';
-import serviceRoutes, { referentialsRouter } from './routes/services.js';
+import serviceRoutes, { communesRouter } from './routes/services.js';
 import favoriteRoutes from './routes/favorites.js';
 import reviewRoutes from './routes/reviews.js';
 import messageRoutes from './routes/messages.js';
@@ -62,7 +62,7 @@ export function createApp() {
   app.use('/api/auth', authRoutes);
   app.use('/api/artisans', artisanRoutes);
   app.use('/api/services', serviceRoutes);
-  app.use('/api/referentials', referentialsRouter());
+  app.use('/api/communes', communesRouter());
   app.use('/api/favorites', favoriteRoutes);
   app.use('/api/reviews', reviewRoutes);
   app.use('/api/messages', messageRoutes);

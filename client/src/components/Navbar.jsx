@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar'
-import { useSession } from '../session/useSession'
+import { useAuth } from '../auth/useAuth'
+import Logo from './Logo'
+import { initialsOf, roleLabel } from '../lib/identity'
 
 const navLinks = [
   { to: '/#services', hash: '#services', label: 'Services' },
@@ -22,7 +24,7 @@ const MOBILE_MENU_ID = 'navbar-mobile-menu'
 const USER_MENU_ID = 'navbar-user-menu'
 
 export default function Navbar() {
-  const { user, signOut } = useSession()
+  const { user, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const navRef = useRef(null)
@@ -100,6 +102,19 @@ export default function Navbar() {
     setOpen(false)
   }
 
+  // L'espace affiché dépend du rôle du compte connecté. Un administrateur n'a pas
+  // d'espace client ni artisan : son point d'entrée est le back-office, seule
+  // section du site qu'il peut réellement utiliser. Le lien n'apparaît que pour
+  // lui — l'API refuserait de toute façon toute autre action.
+  const accountLinks = [
+    ...(user?.role === 'artisan'
+      ? [{ to: '/espace-artisan', label: 'Mon espace artisan', icon: 'construction' }]
+      : userMenuLinks),
+    ...(user?.role === 'admin'
+      ? [{ to: '/admin', label: 'Administration', icon: 'admin_panel_settings' }]
+      : []),
+  ]
+
   const closeAll = () => {
     setOpen(false)
     setUserMenuOpen(false)
@@ -112,15 +127,8 @@ export default function Navbar() {
       className="sticky top-0 z-50 w-full border-b border-slate-200/70 bg-white/95 backdrop-blur-md"
     >
       <div className="mx-auto flex h-16 w-full max-w-[1200px] items-center justify-between gap-3 px-4 md:px-8 xl:h-20 xl:gap-10">
-        <Link
-          to="/"
-          className="flex items-center gap-1.5 py-2 font-display text-xl font-extrabold tracking-tight text-primary xl:text-2xl"
-        >
-          <span className="material-symbols-outlined text-[20px] xl:text-2xl" aria-hidden="true">
-            verified
-          </span>
-          ServiGo
-        </Link>
+        {/* La marque est typographique : aucune pastille à côté du logotype. */}
+        <Logo size="md" className="shrink-0 py-2 xl:text-2xl" />
 
         <div className="hidden items-center text-sm font-semibold xl:flex xl:space-x-6">
           {navLinks.map((l) => {
@@ -165,8 +173,8 @@ export default function Navbar() {
                 className="flex min-h-11 items-center gap-2 rounded-full py-1.5 pr-3 pl-1.5 text-sm font-semibold whitespace-nowrap text-slate-700 transition-colors hover:bg-primary-soft"
               >
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatar} alt="" />
-                  <AvatarFallback>{user.initials}</AvatarFallback>
+                  <AvatarImage src={user.avatarUrl || undefined} alt="" />
+                  <AvatarFallback>{initialsOf(user.name)}</AvatarFallback>
                 </Avatar>
                 <span className="hidden sm:inline">{user.name}</span>
                 <span className="material-symbols-outlined text-lg" aria-hidden="true">
@@ -182,12 +190,12 @@ export default function Navbar() {
                   <div className="border-b border-slate-100 px-4 py-3">
                     <p className="truncate text-sm font-bold text-on-surface">{user.name}</p>
                     <p className="truncate text-xs text-slate-500">
-                      Client · {user.location}
+                      {roleLabel(user.role)} · {user.commune || 'Non renseignée'}
                     </p>
                   </div>
 
                   <div className="flex flex-col gap-1 p-2">
-                    {userMenuLinks.map((l) => (
+                    {accountLinks.map((l) => (
                       <Link
                         key={l.label}
                         to={l.to}
@@ -211,14 +219,6 @@ export default function Navbar() {
                       Déconnexion
                     </button>
                   </div>
-
-                  {/* Rappel d'honnêteté : la session est simulée, aucun compte n'existe. */}
-                  <p className="flex items-start gap-1.5 border-t border-slate-100 px-4 py-2.5 text-xs leading-5 text-slate-500">
-                    <span className="material-symbols-outlined text-sm" aria-hidden="true">
-                      info
-                    </span>
-                    {user.sessionNotice}
-                  </p>
                 </div>
               )}
               </div>
@@ -285,14 +285,14 @@ export default function Navbar() {
               <>
                 <div className="mt-2 border-t border-slate-100 px-3 pt-3">
                   <p className="text-xs font-bold tracking-wider text-slate-400 uppercase">
-                    Connecté (démo)
+                    Connecté
                   </p>
                   <p className="mt-1 text-sm font-bold text-on-surface">{user.name}</p>
                   <p className="text-xs text-slate-500">
-                    Client · {user.location}
+                    {roleLabel(user.role)} · {user.commune || 'Non renseignée'}
                   </p>
                 </div>
-                {userMenuLinks.map((l) => (
+                {accountLinks.map((l) => (
                   <Link
                     key={l.label}
                     to={l.to}
@@ -315,12 +315,6 @@ export default function Navbar() {
                   </span>
                   Déconnexion
                 </button>
-                <p className="flex items-start gap-1.5 px-3 pt-1 text-xs leading-5 text-slate-500">
-                  <span className="material-symbols-outlined text-sm" aria-hidden="true">
-                    info
-                  </span>
-                  {user.sessionNotice}
-                </p>
               </>
             ) : (
               <Link

@@ -1,9 +1,8 @@
-// Coquille de dashboard autonome : sidebar (desktop) + tiroir (mobile) + barre
-// supérieure. Aucune navbar ni footer de la vitrine : les espaces sont des
-// applications de démonstration à part entière, accessibles par URL directe.
+// Coquille de dashboard : sidebar (desktop) + tiroir (mobile) + barre supérieure.
 import { Children, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
+import Logo from '../Logo'
 
 export default function DashboardShell({
   spaceLabel,
@@ -104,18 +103,13 @@ export default function DashboardShell({
     </>
   )
 
+  // La marque est typographique, comme dans l'en-tête et le pied de page : le
+  // logotype vient du composant `Logo`, il n'a pas de pastille. Le nom de
+  // l'espace est une ligne distincte en dessous, pas une variante du logotype.
   const brand = (
-    <div className="mb-8 flex items-center gap-2.5 px-2">
-      <span
-        className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-on-primary"
-        aria-hidden="true"
-      >
-        <span className="material-symbols-outlined text-[20px]">handyman</span>
-      </span>
-      <div>
-        <p className="text-base leading-tight font-bold text-on-surface">ServiGo</p>
-        <p className="text-xs font-medium text-on-surface-variant">{spaceLabel}</p>
-      </div>
+    <div className="mb-8 px-2">
+      <Logo size="sm" />
+      <p className="mt-1 text-xs font-medium text-on-surface-variant">{spaceLabel}</p>
     </div>
   )
 

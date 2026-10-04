@@ -2,7 +2,7 @@
 
 Photos libres téléchargées depuis **Pexels** (`images.pexels.com`), licence Pexels
 (utilisation gratuite, sans attribution requise). Leurs identifiants et liens sont
-conservés ici par transparence. Elles illustrent un profil de démonstration et ne
+conservés ici par transparence. Elles illustrent le profil et ne
 correspondent à aucun chantier réel.
 
 | Fichier local                    | Photo Pexels                   | Lien                                   |

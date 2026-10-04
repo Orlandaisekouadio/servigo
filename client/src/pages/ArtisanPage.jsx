@@ -1,5 +1,4 @@
-// Page « Devenir artisan » — avantages de la vitrine pour les artisans puis
-// formulaire d'inscription artisan (démo : aucun compte créé, tout en mémoire).
+// Page « Devenir artisan » — avantages et formulaire d'inscription artisan.
 import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { protect, restrictTo } from '../middlewares/auth.js';
-import { createReview, listMyReviews, deleteMyReview } from '../controllers/reviewController.js';
+import { createReview, listMyReviews, listRecentReviews, deleteMyReview } from '../controllers/reviewController.js';
 
 const router = Router();
 
@@ -52,6 +52,18 @@ const router = Router();
  *       403: { $ref: '#/components/responses/403' }
  *       404: { $ref: '#/components/responses/404' }
  */
+/**
+ * @openapi
+ * /api/reviews/recent:
+ *   get:
+ *     tags: [Vitrine]
+ *     summary: Derniers avis clients publiés (public)
+ *     parameters:
+ *       - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 12 } }
+ *     responses:
+ *       200: { description: 'Avis récents, du plus récent au plus ancien' }
+ */
+router.get('/recent', listRecentReviews);
 router.post('/', protect, restrictTo('client'), createReview);
 router.get('/me', protect, listMyReviews);
 router.delete('/:id', protect, deleteMyReview);

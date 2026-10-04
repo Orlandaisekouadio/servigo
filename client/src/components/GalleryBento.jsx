@@ -176,7 +176,7 @@ function GalleryLightbox({ item, index, total, onClose, onPrev, onNext }) {
   )
 }
 
-// Ordre et tailles des cases de la galerie d'exemple (6 chantiers du profil).
+// Ordre et tailles des cases de la galerie.
 // Sur mobile : 2 colonnes — une grande case 2×2, puis paires et pleine largeur.
 const SPANS = [
   'col-span-2 row-span-2', // tableau — pièce maîtresse

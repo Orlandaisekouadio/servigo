@@ -1,43 +1,154 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { COMMUNES, METIERS, searchArtisans } from '../data/search'
 import { Stagger } from '../components/motion'
 import { itemVariants } from '../components/variants'
 import Navbar from '../components/Navbar'
+import { getErrorMessage } from '../lib/api'
+import { noteFr } from '../lib/format'
+import { useFavorites } from '../auth/useFavorites'
+import ArtisanCard from '../components/ArtisanCard'
+import Footer from '../components/Footer'
+import { useCommunes, useServices } from '../hooks/useReferentials'
+import { listArtisans } from '../services/artisanService'
+
+const ALL_COMMUNES = 'Toutes les communes'
+const ALL_METIERS = 'Tous les métiers'
 
 const SORTS = [
-  { key: 'booked', label: 'Les plus réservés' },
+  { key: 'reviews', label: 'Les plus réservés' },
   { key: 'rating', label: 'Les mieux notés' },
   { key: 'new', label: 'Nouveaux artisans' },
 ]
 
-function communeOf(a) {
-  const loc = a.location.toLowerCase()
-  const found = COMMUNES.slice(1).find((c) =>
-    loc.includes(c.split('/')[0].trim().toLowerCase().replace(/-/g, ' ')) ||
-    loc.includes(c.split('/')[0].trim().toLowerCase()),
-  )
-  return found || 'Autre'
-}
+
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams()
+  // Une seule lecture des favoris pour toute la page : les cartes n'en relancent pas.
+  const {
+    isFavorite,
+    toggle: toggleFavorite,
+    pending: pendingFavorite,
+    ready: favoritesReady,
+    error: favoriteError,
+  } = useFavorites()
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [availableOnly, setAvailableOnly] = useState(false)
-  const [metier, setMetier] = useState(() => {
-    const m = searchParams.get('metier')
-    return m && METIERS.includes(m) ? m : 'Tous les métiers'
-  })
-  const [commune, setCommune] = useState(() => {
-    const c = searchParams.get('commune')
-    return c && COMMUNES.includes(c) ? c : 'Toutes les communes'
-  })
+  // Métiers et communes : administrables, donc lus depuis l'API. Le filtre métier
+  // porte sur le slug construit par le serveur — le client ne le devine pas.
+  const { valeur: metiers, chargement: metiersChargement, erreur: metiersErreur } = useServices()
+  const { valeur: communes, chargement: communesChargement, erreur: communesErreur } = useCommunes()
+
+  // Les paramètres d'URL sont repris tels quels, y compris s'ils sont invalides : le
+  // catalogue arrive en asynchrone, les valider à l'initialisation reviendrait à
+  // rejeter des valeurs parfaitement bonnes.
+  const [metier, setMetier] = useState(() => searchParams.get('metier') ?? ALL_METIERS)
+  const [commune, setCommune] = useState(() => searchParams.get('commune') ?? ALL_COMMUNES)
+
+  const nomsCommunes = useMemo(() => communes.map((c) => c.name), [communes])
+
+  // Réconciliation des paramètres d'URL une fois le catalogue connu, dérivée
+  // pendant le rendu et non corrigée par un effet : un métier ou une commune
+  // retirés du catalogue donnaient sinon une page « aucun artisan trouvé » sans
+  // explication, le filtre restant actif mais invisible. Un filtre abandonné est
+  // annoncé plutôt que silencieusement effacé.
+  //
+  // Tant que le catalogue n'est pas chargé, la valeur reçue est reprise telle
+  // quelle : une liste vide ne prouve pas qu'un métier est inconnu.
+  const catalogueConnu = !metiersChargement && !communesChargement
+  // Chaque filtre est jugé séparément : un métier périmé ne doit pas entraîner
+  // la zone, qui elle est valide, dans le même abandon.
+  const metierPerime =
+    catalogueConnu && metiers.length > 0 && metier !== ALL_METIERS && !metiers.some((m) => m.name === metier)
+  const communePerimee =
+    catalogueConnu && nomsCommunes.length > 0 && commune !== ALL_COMMUNES && !nomsCommunes.includes(commune)
+
+  const abandon = useMemo(() => {
+    const inconnus = []
+    if (metierPerime) inconnus.push(`le métier « ${metier} »`)
+    if (communePerimee) inconnus.push(`la zone « ${commune} »`)
+    return inconnus.length
+      ? `${inconnus.join(' et ')} ne fait plus partie du catalogue : filtre retiré.`
+      : ''
+  }, [metierPerime, communePerimee, metier, commune])
+
+  const metierActif = metierPerime ? ALL_METIERS : metier
+  const communeActive = communePerimee ? ALL_COMMUNES : commune
   const [minNote, setMinNote] = useState(0)
-  const [sortKey, setSortKey] = useState('booked')
+  const [sortKey, setSortKey] = useState('reviews')
   const [sortOpen, setSortOpen] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const sortBtnRef = useRef(null)
+
+  // Résultats et état de lecture : la liste affichée vient de l'API. Les trois
+  // champs sont rangés ensemble avec la clé de requête qui les a produits, ce qui
+  // permet de déduire `loading` pendant le rendu au lieu de le remettre à vrai
+  // depuis l'effet (ce qui coûterait un rendu supplémentaire à chaque frappe).
+  const [state, setState] = useState({ key: null, results: [], total: 0, error: '' })
+  // La saisie est différée : une requête par frappe sur le clavier saturerait
+  // l'API pour rien.
+  const [debouncedQuery, setDebouncedQuery] = useState(query)
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 250)
+    return () => clearTimeout(id)
+  }, [query])
+
+  const serviceSlug = useMemo(
+    () => metiers.find((m) => m.name === metierActif)?.slug ?? '',
+    [metiers, metierActif],
+  )
+
+  // Incrémenté par le bouton « Réessayer » pour relancer la requête à l'identique.
+  const [retry, setRetry] = useState(0)
+
+  const requestKey = JSON.stringify([
+    debouncedQuery.trim(),
+    serviceSlug,
+    communeActive,
+    minNote,
+    availableOnly,
+    sortKey,
+    retry,
+  ])
+  const loading = state.key !== requestKey
+  const results = state.results
+  const total = state.total
+  const loadError = state.error
+
+  useEffect(() => {
+    let cancelled = false
+    listArtisans({
+      q: debouncedQuery.trim(),
+      service: serviceSlug,
+      commune: communeActive === ALL_COMMUNES ? '' : communeActive,
+      minNote,
+      disponible: availableOnly ? true : undefined,
+      sort: sortKey,
+      limit: 50,
+    })
+      .then((res) => {
+        if (!cancelled) {
+          setState({
+            key: requestKey,
+            results: res?.data ?? [],
+            total: res?.total ?? 0,
+            error: '',
+          })
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setState({ key: requestKey, results: [], total: 0, error: getErrorMessage(err) })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+    // `requestKey` est la synthèse des cinq critères ci-dessus : les lister
+    // aussi ne déclenche aucun passage de plus, la clé changeant déjà avec eux.
+  }, [debouncedQuery, serviceSlug, communeActive, minNote, availableOnly, sortKey, requestKey])
 
   useEffect(() => {
     if (!sortOpen) return
@@ -51,43 +162,21 @@ export default function SearchPage() {
     return () => document.removeEventListener('keydown', onKey)
   }, [sortOpen])
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    let list = searchArtisans.filter((a) => {
-      if (availableOnly && !a.available) return false
-      if (metier !== 'Tous les métiers' && a.metier !== metier) return false
-      if (commune !== 'Toutes les communes' && communeOf(a) !== commune) return false
-      if (a.rating < minNote) return false
-      if (
-        q &&
-        !`${a.name} ${a.role} ${a.metier} ${a.location}`.toLowerCase().includes(q)
-      )
-        return false
-      return true
-    })
-    list = [...list].sort((x, y) => {
-      if (sortKey === 'rating') return y.rating - x.rating
-      if (sortKey === 'new') return y.id - x.id
-      return y.reviews - x.reviews
-    })
-    return list
-  }, [query, availableOnly, metier, commune, minNote, sortKey])
-
   const chips = []
-  if (metier !== 'Tous les métiers')
-    chips.push({ label: metier, clear: () => setMetier('Tous les métiers') })
-  if (commune !== 'Toutes les communes')
-    chips.push({ label: commune, clear: () => setCommune('Toutes les communes') })
+  if (metierActif !== ALL_METIERS)
+    chips.push({ label: metierActif, clear: () => setMetier(ALL_METIERS) })
+  if (communeActive !== ALL_COMMUNES)
+    chips.push({ label: communeActive, clear: () => setCommune(ALL_COMMUNES) })
   if (availableOnly)
     chips.push({ label: 'Disponible de suite', clear: () => setAvailableOnly(false) })
   if (minNote > 0)
-    chips.push({ label: `Note ≥ ${minNote}`, clear: () => setMinNote(0) })
+    chips.push({ label: `Note ≥ ${noteFr(minNote, 0)}`, clear: () => setMinNote(0) })
 
   const resetAll = () => {
     setQuery('')
     setAvailableOnly(false)
-    setMetier('Tous les métiers')
-    setCommune('Toutes les communes')
+    setMetier(ALL_METIERS)
+    setCommune(ALL_COMMUNES)
     setMinNote(0)
   }
 
@@ -114,6 +203,33 @@ export default function SearchPage() {
                   Réinitialiser
                 </button>
               </div>
+
+              {/* Un référentiel illisible ne se devine pas : on le dit au lieu de
+                  laisser une liste de métiers ou de communes à moitié vide. */}
+              {(metiersErreur || communesErreur) && (
+                <p
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700"
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    cloud_off
+                  </span>
+                  {metiersErreur || communesErreur}
+                </p>
+              )}
+
+              {/* Filtre arrivé par l'URL mais retiré du catalogue depuis. */}
+              {abandon && (
+                <p
+                  role="status"
+                  className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800"
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">
+                    info
+                  </span>
+                  {abandon}
+                </p>
+              )}
 
               {/* Disponibilité */}
               <label className="flex cursor-pointer items-center justify-between gap-3">
@@ -143,19 +259,29 @@ export default function SearchPage() {
               <div>
                 <h3 className="mb-4 text-[15px] font-bold">Nos catégories</h3>
                 <div className="space-y-3.5">
-                  {METIERS.map((m) => (
+                  <label className="flex cursor-pointer items-center gap-3 text-[15px] text-slate-600">
+                    <input
+                      type="radio"
+                      name="metier"
+                      checked={metierActif === ALL_METIERS}
+                      onChange={() => setMetier(ALL_METIERS)}
+                      className="h-5 w-5 accent-[#15803d]"
+                    />
+                    {ALL_METIERS}
+                  </label>
+                  {metiers.map((m) => (
                     <label
-                      key={m}
+                      key={m.slug}
                       className="flex cursor-pointer items-center gap-3 text-[15px] text-slate-600"
                     >
                       <input
                         type="radio"
                         name="metier"
-                        checked={metier === m}
-                        onChange={() => setMetier(m)}
+                        checked={metierActif === m.name}
+                        onChange={() => setMetier(m.name)}
                         className="h-5 w-5 accent-[#15803d]"
                       />
-                      {m}
+                      {m.name}
                     </label>
                   ))}
                 </div>
@@ -195,13 +321,16 @@ export default function SearchPage() {
                 <h3 className="mb-4 text-[15px] font-bold">Localisation</h3>
                 <div className="relative">
                   <select
-                    value={commune}
+                    value={communeActive}
                     onChange={(e) => setCommune(e.target.value)}
                     aria-label="Choisir une commune"
                     className="w-full appearance-none rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-[15px] text-slate-600 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                   >
-                    {COMMUNES.map((c) => (
-                      <option key={c}>{c}</option>
+                    <option value={ALL_COMMUNES}>{ALL_COMMUNES}</option>
+                    {nomsCommunes.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
                     ))}
                   </select>
                   <span className="material-symbols-outlined pointer-events-none absolute top-1/2 right-4 -translate-y-1/2 text-slate-500" aria-hidden="true">
@@ -318,15 +447,62 @@ export default function SearchPage() {
               </div>
             )}
 
+            {/* Les favoris échouent indépendamment de la recherche : le cœur est
+                revenu à son état d'origine, on le dit sans masquer les résultats. */}
+            {favoriteError && (
+              <p role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-900">
+                Favori non enregistré : {favoriteError}
+              </p>
+            )}
+
             <h1 className="mb-1 text-2xl font-bold tracking-tight md:text-[28px]">
-              Artisans vérifiés à Abidjan
+              Artisans disponibles à Abidjan
             </h1>
-            <p className="mb-8 text-[15px] text-slate-500">
-              {filtered.length} artisan{filtered.length > 1 ? 's' : ''} correspond
-              {filtered.length > 1 ? 'ent' : ''} à vos critères
+            <p aria-live="polite" className="mb-8 text-[15px] text-slate-500">
+              {loading
+                ? 'Recherche en cours…'
+                : `${total} artisan${total > 1 ? 's' : ''} correspond${
+                    total > 1 ? 'ent' : ''
+                  } à vos critères`}
+              {/* La page remonte 50 profils à la fois : au-delà, on ne présente pas
+                  le total comme s'il était entièrement visible. */}
+              {!loading && total > results.length && (
+                <> — affichage des {results.length} premiers</>
+              )}
             </p>
 
-            {filtered.length === 0 ? (
+            {loadError ? (
+              <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-12 text-center">
+                <span className="material-symbols-outlined mb-3 text-5xl text-red-400" aria-hidden="true">
+                  cloud_off
+                </span>
+                <p className="text-lg font-bold">Recherche indisponible</p>
+                <p className="mt-1 text-[15px] text-slate-600">{loadError}</p>
+                <button
+                  onClick={() => setRetry((n) => n + 1)}
+                  className="mt-5 rounded-full border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-on-surface transition-colors hover:border-primary hover:text-primary"
+                >
+                  Réessayer
+                </button>
+              </div>
+            ) : loading ? (
+              <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    aria-hidden="true"
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                  >
+                    <div className="h-64 w-full animate-pulse bg-slate-100" />
+                    <div className="space-y-3 p-7">
+                      <div className="h-5 w-1/2 animate-pulse rounded bg-slate-100" />
+                      <div className="h-4 w-1/3 animate-pulse rounded bg-slate-100" />
+                      <div className="h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : results.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
                 <span className="material-symbols-outlined mb-3 text-5xl text-slate-300" aria-hidden="true">
                   person_search
@@ -344,44 +520,18 @@ export default function SearchPage() {
               </div>
             ) : (
               <Stagger className="grid grid-cols-1 gap-8 xl:grid-cols-2">
-                {filtered.map((a) => (
-                  <motion.article
-                    key={a.id}
-                    variants={itemVariants}
-                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-lg"
-                  >
-                    <div className="relative">
-                      <img src={a.avatar} alt={a.name} loading="lazy" className="h-64 w-full object-cover" />
-                      <span
-                        className={`absolute top-4 left-4 flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-white shadow ${
-                          a.available ? 'bg-primary' : 'bg-accent'
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-sm" aria-hidden="true">verified</span>
-                        {a.available ? 'Disponible' : a.availableLabel}
-                      </span>
-                    </div>
-                    <div className="p-7">
-                      <h2 className="text-xl font-bold">{a.name}</h2>
-                      <p className="mt-1 text-sm text-slate-500">{a.role}</p>
-                      <p className="mt-3 flex items-center gap-1.5 text-[15px]">
-                        <span className="material-symbols-outlined text-lg text-accent" aria-hidden="true">star</span>
-                        <span className="font-bold">{a.rating}</span>
-                        <span className="text-slate-500">({a.reviews} avis)</span>
-                        <span className="sr-only">Note {a.rating} sur 5</span>
-                      </p>
-                      <p className="mt-1.5 flex items-center gap-1.5 text-sm text-slate-500">
-                        <span className="material-symbols-outlined text-base" aria-hidden="true">location_on</span>
-                        {a.location}
-                      </p>
-                      <Link
-                        to={`/artisan/${a.slug}`}
-                        className="mt-5 flex min-h-12 items-center justify-center rounded-xl bg-primary px-6 font-semibold text-white transition-colors hover:bg-primary-deep"
-                      >
-                        Voir le profil
-                      </Link>
-                    </div>
-                  </motion.article>
+                {results.map((a) => (
+                  <motion.div key={a._id} variants={itemVariants} className="h-full">
+                    <ArtisanCard
+                      artisan={a}
+                      favourite={{
+                        isFavorite: isFavorite(a.slug),
+                        onToggle: toggleFavorite,
+                        pending: pendingFavorite,
+                        ready: favoritesReady,
+                      }}
+                    />
+                  </motion.div>
                 ))}
               </Stagger>
             )}
@@ -389,75 +539,10 @@ export default function SearchPage() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-outline-variant/30 bg-surface-container-low">
-        <div className="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-4 py-14 md:grid-cols-4 md:px-8">
-          <div className="md:col-span-1">
-            <div className="mb-4 flex items-center gap-2 text-xl font-extrabold text-primary-deep">
-              <span className="material-symbols-outlined" aria-hidden="true">home_repair_service</span>
-              ServiGo
-            </div>
-            <p className="text-sm leading-relaxed text-slate-500">
-              La première plateforme de mise en relation de confiance avec les artisans qualifiés en
-              Côte d&apos;Ivoire.
-            </p>
-            <p className="mt-4 text-sm font-medium text-slate-600">Abidjan, Côte d&apos;Ivoire</p>
-          </div>
-          <div>
-            <h3 className="mb-4 text-sm font-bold tracking-wider uppercase">Découvrir</h3>
-            <ul className="space-y-2.5 text-sm text-slate-500">
-              <li>
-                <Link to="/recherche" className="hover:text-primary">
-                  Trouver un artisan
-                </Link>
-              </li>
-              <li>
-                <Link to="/#services" className="hover:text-primary">
-                  Toutes les catégories
-                </Link>
-              </li>
-              <li>
-                <Link to="/#comment" className="hover:text-primary">
-                  Comment ça marche
-                </Link>
-              </li>
-              <li>Grille tarifaire</li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="mb-4 text-sm font-bold tracking-wider uppercase">Professionnels</h3>
-            <ul className="space-y-2.5 text-sm text-slate-500">
-              <li>
-                <Link to="/devenir-artisan" className="hover:text-primary">
-                  Devenir artisan
-                </Link>
-              </li>
-              <li>Charte de qualité</li>
-              <li>Espace Pro ServiGo</li>
-              <li>
-                <Link to="/connexion" className="hover:text-primary">
-                  Centre d&apos;assistance
-                </Link>
-              </li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="mb-4 text-sm font-bold tracking-wider uppercase">Contact & Légal</h3>
-            <ul className="space-y-2.5 text-sm text-slate-500">
-              <li>Contactez-nous</li>
-              <li>Mentions légales</li>
-              <li>Politique de confidentialité</li>
-              <li>Conditions d&apos;utilisation</li>
-            </ul>
-          </div>
-        </div>
-        <div className="border-t border-slate-200">
-          <div className="mx-auto flex max-w-[1200px] flex-col items-center justify-between gap-2 px-4 py-6 text-sm text-slate-500 md:flex-row md:px-8">
-            <p>© 2025 ServiGo CI. Tous droits réservés.</p>
-            <p className="font-medium text-primary-deep">Construit pour l&apos;artisanat ivoirien</p>
-          </div>
-        </div>
-      </footer>
+      {/* Le pied de page est commun à toutes les pages : cette copie
+          locale avait son propre logotype, sa propre accroche et des liens
+          morts (« Grille tarifaire », « Mentions légales »…). */}
+      <Footer />
     </div>
   )
 }

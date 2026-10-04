@@ -39,26 +39,51 @@ async function findServiceBySpecialite(specialite) {
 }
 
 // Charge le profil de l'artisan connecté, en le créant au premier appel.
+//
+// La création doit survivre à la concurrence : à la première visite, le front
+// appelle /me, /stats, /gallery et /zones en parallèle, et les quatre
+// middlewares voient en même temps qu'aucun profil n'existe. Deux index uniques
+// protègent la table — `user` (un profil par compte) et `slug` (deux artisans
+// peuvent s'appeler pareil) — donc le perdant reçoit une E11000. Plutôt que de
+// la laisser remonter en 500, on relit le profil que le gagnant vient d'écrire.
+// Si le conflit portait sur le slug (et non sur le compte), c'est qu'un homonyme
+// l'a pris entre-temps : on retente alors avec un slug libre.
+async function loadOrCreateProfile(user) {
+  const existing = await ArtisanProfile.findOne({ user: user._id });
+  if (existing) return existing;
+
+  const [firstService, fallback] = await Promise.all([
+    findServiceBySpecialite(user.specialite),
+    Service.findOne().sort({ name: 1 }).select('_id'),
+  ]);
+  const seed = {
+    name: user.name,
+    role: user.specialite || '',
+    commune: user.commune || '',
+    phone: user.phone || '',
+    whatsapp: user.phone || '',
+    services: [(firstService ?? fallback)?._id].filter(Boolean),
+  };
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return await ArtisanProfile.create({
+        user: user._id,
+        slug: await uniqueSlug(slugify(user.name)),
+        ...seed,
+      });
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      const winner = await ArtisanProfile.findOne({ user: user._id });
+      if (winner) return winner;
+    }
+  }
+  throw Object.assign(new Error("Impossible de créer le profil artisan."), { code: 11000 });
+}
+
 export async function requireOwnProfile(req, res, next) {
   try {
-    let profile = await ArtisanProfile.findOne({ user: req.user._id });
-    if (!profile) {
-      const [firstService, fallback] = await Promise.all([
-        findServiceBySpecialite(req.user.specialite),
-        Service.findOne().sort({ name: 1 }).select('_id'),
-      ]);
-      profile = await ArtisanProfile.create({
-        user: req.user._id,
-        slug: await uniqueSlug(slugify(req.user.name)),
-        name: req.user.name,
-        role: req.user.specialite || '',
-        commune: req.user.commune || '',
-        phone: req.user.phone || '',
-        whatsapp: req.user.phone || '',
-        services: [(firstService ?? fallback)?._id].filter(Boolean),
-      });
-    }
-    req.profile = profile;
+    req.profile = await loadOrCreateProfile(req.user);
     next();
   } catch (err) {
     next(err);

@@ -1,3 +1,9 @@
+// Données de démonstration du seed : les fiches artisans et la vitrine de
+// Koffi, avec leurs avis.
+//
+// Ce fichier n'est pas une source de vérité. La page d'accueil, la recherche et
+// les espaces lisent la base via l'API ; relancer le seed réécrit ces profils
+// (mêmes slugs, mêmes identifiants) sans les retirer.
 export const METIERS = [
   'Tous les métiers',
   'Plomberie sanitaire',
@@ -8,38 +14,6 @@ export const METIERS = [
   'Maçonnerie & Rénovation',
   'Serrurerie',
 ]
-
-export const COMMUNES = [
-  'Toutes les communes',
-  'Cocody',
-  'Deux-Plateaux / Vallons',
-  'Marcory / Zone 4',
-  'Yopougon',
-  'Le Plateau',
-  'Koumassi',
-  'Port-Bouët',
-  'Treichville',
-  'Bingerville',
-]
-
-const norm = (s) =>
-  s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/-/g, ' ')
-    .trim()
-
-export function matchCommune(text) {
-  const t = norm(text || '')
-  if (!t) return null
-  return (
-    COMMUNES.slice(1).find((c) => {
-      const tokens = norm(c).split(/[/\s]+/).filter(Boolean)
-      return tokens.some((tok) => tok.length > 3 && t.includes(tok)) || t.includes(norm(c))
-    }) || null
-  )
-}
 
 export const searchArtisans = [
   {
@@ -131,6 +105,13 @@ export const koffiProfile = {
   location: 'Cocody, Riviera Bonoumin (Abidjan)',
   rating: 4.9,
   available: true,
+  // La fiche publique lit la présentation dans la base : c'est ce champ que le
+  // seed y écrit, et que l'artisan peut ensuite modifier depuis son espace.
+  bio: `Technicien électricien avec plus de 8 années d'expérience sur les chantiers résidentiels de standing, les immeubles de bureaux et les résidences privées du district d'Abidjan. Diplômé de l'Institut National Polytechnique Félix Houphouët-Boigny (INP-HB) et titulaire du Certificat d'Aptitude Professionnelle (CAP Électricité Bâtiment), j'ai fait de la sécurité des installations et de la rigueur d'exécution mes deux exigences absolues.
+
+En Côte d'Ivoire, les variations de tension et les surtensions du réseau nécessitent des équipements de protection adéquats : je conçois et sécurise vos réseaux électriques selon les normes internationales NF C 15-100.
+
+Qu'il s'agisse d'un dépannage urgent, de la réhabilitation totale d'un tableau divisionnaire ou de l'installation de dispositifs solaires et d'onduleurs, chaque intervention est documentée par un rapport technique remis au client.`,
   services: [
     {
       icon: 'power',

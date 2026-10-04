@@ -2,13 +2,14 @@
   "name": "servigo-server",
   "private": true,
   "version": "0.1.0",
-  "description": "ServiGo backend — Express + Mongoose (itération 0 : socle)",
+  "description": "ServiGo backend \u2014 Express + Mongoose (it\u00e9ration 0 : socle)",
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "seed": "node seed/seed.js",
-    "promote-admin": "node scripts/promote-admin.js"
+    "promote-admin": "node scripts/promote-admin.js",
+    "bootstrap-admin": "node scripts/bootstrap-admin.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

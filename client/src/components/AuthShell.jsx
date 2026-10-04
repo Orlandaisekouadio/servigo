@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import Logo from './Logo'
 
 export default function AuthShell({ badge, title, subtitle, children }) {
   return (
@@ -10,13 +11,7 @@ export default function AuthShell({ badge, title, subtitle, children }) {
           <div className="absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-surface-tint/40 blur-3xl"></div>
 
           <div className="relative z-10 flex items-center justify-between">
-            <Link
-              to="/"
-              className="flex items-center gap-2 text-2xl font-extrabold tracking-tight"
-            >
-              <span className="material-symbols-outlined text-[32px]" aria-hidden="true">home_repair_service</span>
-              ServiGo
-            </Link>
+            <Logo tone="onDark" size="xl" />
             <Link
               to="/"
               className="flex items-center gap-1 text-sm font-medium text-white/80 transition-colors hover:text-white"
@@ -46,10 +41,7 @@ export default function AuthShell({ badge, title, subtitle, children }) {
         {/* Right form panel */}
         <div className="flex flex-col justify-center px-6 py-12 md:px-16 lg:px-20">
           <div className="mb-8 flex items-center justify-between lg:hidden">
-            <Link to="/" className="flex items-center gap-2 text-xl font-extrabold text-primary-deep">
-              <span className="material-symbols-outlined" aria-hidden="true">home_repair_service</span>
-              ServiGo
-            </Link>
+            <Logo size="md" />
             <Link to="/" className="flex items-center gap-1 text-sm text-slate-500">
               <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_back</span>
               Accueil

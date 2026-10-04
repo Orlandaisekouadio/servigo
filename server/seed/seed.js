@@ -10,10 +10,13 @@ import mongoose from 'mongoose';
 
 const seedDir = new URL('.', import.meta.url).pathname;
 const serverDir = path.resolve(seedDir, '..');
-const dataDir = path.join(serverDir, '..', 'client', 'src', 'data');
+// Toutes les données de démonstration vivent dans seed/data/. Le seed ne lit
+// plus rien dans client/ : le front consomme la base via l'API, il n'a plus de
+// catalogue de métiers ni de liste de communes à fournir.
+const seedDataDir = path.join(seedDir, 'data');
 
 async function load(name) {
-  return import(pathToFileURL(path.join(dataDir, name)).href);
+  return import(pathToFileURL(path.join(seedDataDir, name)).href);
 }
 
 const { searchArtisans, koffiProfile, METIERS } = await load('search.js');
@@ -21,27 +24,50 @@ const { categories } = await load('categories.js');
 
 const dryRun = process.argv.includes('--dry-run') || !process.env.MONGO_URI;
 
+const COMMUNE_BY_SLUG = {
+  'mamadou-kone': 'Cocody',
+  'koffi-amani': 'Cocody',
+  'maitre-yao': 'Deux-Plateaux / Vallons',
+  'bakary-sangare': 'Cocody',
+  'ibrahim-cisse': 'Cocody',
+  'gerard-ngoran': 'Cocody',
+};
+
+// Communes desservies à l'installation. La collection Commune est ensuite gérée
+// par l'admin : cette liste n'est que l'amorçage, elle est réexécutée sans
+// écraser les communes ajoutées depuis (voir `upsert` plus bas).
+const COMMUNES = [
+  { name: 'Cocody', position: 10 },
+  { name: 'Deux-Plateaux / Vallons', position: 20 },
+  { name: 'Marcory / Zone 4', position: 30 },
+  { name: 'Yopougon', position: 40 },
+  { name: 'Le Plateau', position: 50 },
+  { name: 'Koumassi', position: 60 },
+  { name: 'Port-Bouët', position: 70 },
+  { name: 'Treichville', position: 80 },
+  { name: 'Bingerville', position: 90 },
+];
 const report = {
   artisansRecherche: searchArtisans.length,
   categories: categories.length,
 };
 
 if (dryRun) {
-  const { reviews } = await load('reviews.js');
-  const { faqItems } = await load('faq.js');
-  const { artisans } = await load('artisans.js');
-  console.log('[seed] Sources front lues depuis client/src/data/:');
+  // Le seed n'écrit que ce qu'il contient : les avis d'une vitrine inventée et
+  // la FAQ du site ne relèvent pas de lui (les avis viennent de la base, la FAQ
+  // reste du contenu rédactionnel lu par le front). On ne les compte donc pas.
+  console.log('[seed] Sources lues depuis seed/data/:');
   console.table({
     ...report,
-    artisansRecommandes: artisans.length,
-    reviews: reviews.length,
-    faq: faqItems.length,
+    communes: COMMUNES.length,
+    avisKoffi: koffiProfile.reviews.length,
   });
   console.log('[seed] dry-run OK — rien écrit (MONGO_URI absent ou --dry-run).');
   process.exit(0);
 }
 
 const { Service } = await import('../src/models/Service.js');
+const { Commune } = await import('../src/models/Commune.js');
 const { User } = await import('../src/models/User.js');
 const { ArtisanProfile } = await import('../src/models/ArtisanProfile.js');
 const { GalleryItem } = await import('../src/models/GalleryItem.js');
@@ -70,15 +96,6 @@ const METIER_TO_SLUG = Object.fromEntries(
   METIERS.filter((m) => m !== 'Tous les métiers').map((m) => [m, slugify(m)]),
 );
 
-const COMMUNE_BY_SLUG = {
-  'mamadou-kone': 'Cocody',
-  'koffi-amani': 'Cocody',
-  'maitre-yao': 'Deux-Plateaux / Vallons',
-  'bakary-sangare': 'Cocody',
-  'ibrahim-cisse': 'Cocody',
-  'gerard-ngoran': 'Cocody',
-};
-
 const PAYMENT_MEANS = ['Espèces', 'Wave', 'Orange Money'];
 
 await mongoose.connect(process.env.MONGO_URI);
@@ -102,6 +119,13 @@ for (const s of serviceDocs) {
 const servicesBySlug = Object.fromEntries(
   (await Service.find({}).select('_id slug')).map((s) => [s.slug, s._id]),
 );
+
+// 1 bis. Communes : référentiel administrable, amorcé ici. `active` et `locked`
+// ne sont jamais réécrits — une commune désactivée ou verrouillée par l'admin
+// doit survivre à un re-seed, sinon le seed la remettrait en service.
+for (const c of COMMUNES) {
+  await Commune.updateOne({ name: c.name }, { $set: { position: c.position } }, { upsert: true });
+}
 
 // 2. Comptes User artisans (téléphones fictifs dédiés au seed).
 let usersCreated = 0;
@@ -150,7 +174,10 @@ for (const a of searchArtisans) {
     available: a.available,
     availableLabel: a.availableLabel,
     verified: false,
-    bio: '',
+    // La présentation vit en base : la fiche publique l'affiche telle quelle et
+    // l'artisan peut la modifier depuis son espace. Seuls les profils de la
+    // vitrine en fournissent une ; un artisan inscrit part d'une page vide.
+    bio: isKoffi ? (koffiProfile.bio ?? '') : '',
     phone: usersBySlug[a.slug].phone,
     whatsapp: usersBySlug[a.slug].phone,
     paymentMeans: PAYMENT_MEANS,

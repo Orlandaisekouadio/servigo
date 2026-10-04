@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, Navigate } from 'react-router-dom'
 import Navbar from './components/Navbar'
 import HashScroll from './components/HashScroll'
 import AppPreloader from './components/AppPreloader'
@@ -16,11 +16,11 @@ import RegisterPage from './pages/RegisterPage'
 import SearchPage from './pages/SearchPage'
 import ArtisanProfilePage from './pages/ArtisanProfilePage'
 import ArtisanPage from './pages/ArtisanPage'
-import HeroVariantsPage from './pages/HeroVariantsPage'
-import PreloaderVariantsPage from './pages/PreloaderVariantsPage'
 import ContactPage from './pages/ContactPage'
 import ArtisanDashboardPage from './pages/artisan/ArtisanDashboardPage'
 import ClientDashboardPage from './pages/client/ClientDashboardPage'
+import AdminPage from './pages/AdminPage'
+import { AuthProvider } from './auth/AuthProvider'
 
 function LandingPage() {
   return (
@@ -43,22 +43,22 @@ function LandingPage() {
 
 export default function App() {
   return (
-    <>
+    <AuthProvider>
       <AppPreloader />
       <HashScroll />
       <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/connexion" element={<LoginPage />} />
-      <Route path="/inscription" element={<RegisterPage />} />
-      <Route path="/recherche" element={<SearchPage />} />
-      <Route path="/contact" element={<ContactPage />} />
-      <Route path="/devenir-artisan" element={<ArtisanPage />} />
-      <Route path="/artisan/:slug" element={<ArtisanProfilePage />} />
-      <Route path="/hero-variantes" element={<HeroVariantsPage />} />
-      <Route path="/preloaders" element={<PreloaderVariantsPage />} />
-      <Route path="/espace-client" element={<ClientDashboardPage />} />
-      <Route path="/espace-artisan" element={<ArtisanDashboardPage />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/connexion" element={<LoginPage />} />
+        <Route path="/inscription" element={<RegisterPage />} />
+        <Route path="/recherche" element={<SearchPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/devenir-artisan" element={<ArtisanPage />} />
+        <Route path="/artisan/:slug" element={<ArtisanProfilePage />} />
+        <Route path="/espace-client" element={<ClientDashboardPage />} />
+        <Route path="/espace-artisan" element={<ArtisanDashboardPage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+    </AuthProvider>
   )
 }

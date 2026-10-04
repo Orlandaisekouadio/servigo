@@ -1,100 +1,51 @@
-// Panneau « Historique des contacts » (client) — lignes de démonstration
-// construites à partir d'artisans réels du site, clairement étiquetées.
-import { searchArtisans } from '../../data/search'
-import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
-import { Badge } from '../../components/ui/badge'
+// Panneau « Historique des contacts » (client).
+//
+// ServiGo est une vitrine : elle met en relation client et artisan sans
+// enregistrer les échanges. Aucun historique de prises de contact n'est donc
+// conservé en base — ni côté serveur, ni ici. Le panneau explique ce point
+// plutôt que d'afficher un faux relevé d'interventions.
+import { Link } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
-import { Separator } from '../../components/ui/separator'
-
-const HISTORY = [
-  {
-    slug: 'mamadou-kone',
-    service: 'Demande de devis',
-    detail: 'Fuite dans la salle de bain',
-    date: '12 sept. 2026',
-    status: { label: 'Terminé', variant: 'soft' },
-  },
-  {
-    slug: 'maitre-yao',
-    service: 'Devis sur mesure',
-    detail: 'Armoire coulissante pour chambre',
-    date: '2 sept. 2026',
-    status: { label: 'En attente', variant: 'amber' },
-  },
-  {
-    slug: 'koffi-amani',
-    service: 'Intervention électrique',
-    detail: 'Remplacement du tableau',
-    date: '24 août 2026',
-    status: { label: 'Terminé', variant: 'soft' },
-  },
-]
-
-const initials = (name) => name.split(' ').slice(0, 2).map((w) => w[0]).join('')
 
 export default function HistoryPanel() {
   return (
-    <Card>
+    <Card className="mb-0">
       <CardHeader>
         <CardTitle className="text-lg">Historique des contacts</CardTitle>
         <CardDescription className="mt-0.5">
-          Historique de démonstration : aucune mise en relation réelle n&apos;a eu lieu — les
-          lignes illustrent la structure, avec des artisans présents sur la vitrine.
+          Vos échanges avec les artisans, en un coup d&apos;œil.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="space-y-0">
-          {HISTORY.map((h, i) => {
-            const artisan = searchArtisans.find((a) => a.slug === h.slug)
-            if (!artisan) return null
-            return (
-              <li key={h.slug}>
-                {i > 0 && <Separator className="my-4" />}
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <Avatar className="h-12 w-12 shrink-0">
-                    <AvatarImage src={artisan.avatar} alt={`Portrait de ${artisan.name}`} />
-                    <AvatarFallback>{initials(artisan.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-bold text-on-surface">{artisan.name}</p>
-                      <Badge variant={h.status.variant}>{h.status.label}</Badge>
-                    </div>
-                    <p className="text-sm text-slate-500">
-                      {h.service} · {h.detail}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      {artisan.metier} · {h.date}
-                    </p>
-                  </div>
-                  <p className="shrink-0 text-sm font-medium text-slate-600">
-                    {h.status.label === 'Terminé' ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base text-primary" aria-hidden="true">
-                          check_circle
-                        </span>
-                        Intervention suivie
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base text-amber-600" aria-hidden="true">
-                          schedule
-                        </span>
-                        Réponse attendue
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-        <p className="mt-5 flex items-center gap-1.5 text-xs text-slate-500">
-          <span className="material-symbols-outlined text-sm" aria-hidden="true">
-            info
+        <div className="rounded-2xl border border-slate-200 bg-surface-container-low p-6 text-center">
+          <span
+            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft"
+            aria-hidden="true"
+          >
+            <span className="material-symbols-outlined text-3xl text-primary">history</span>
           </span>
-          Dates et statuts fictifs — données d&apos;exemple (démo).
-        </p>
+          <p className="mt-4 font-bold text-on-surface">
+            Aucun historique n&apos;est conservé par ServiGo
+          </p>
+          <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-on-surface-variant">
+            La plateforme sert de vitrine : elle vous met en relation avec l&apos;artisan, puis
+            vous négociez et réglez directement avec lui. Vos conversations restent
+            entre vous, dans WhatsApp ou au téléphone, et ne sont ni enregistrées ni
+            revendues.
+          </p>
+          <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-on-surface-variant">
+            Pour retrouver un artisan, retrouvez-le dans vos favoris ou relancez une recherche.
+          </p>
+          <Link
+            to="/recherche"
+            className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-7 text-sm font-semibold text-on-primary transition-colors hover:bg-primary-deep"
+          >
+            Trouver un artisan
+            <span className="material-symbols-outlined text-base" aria-hidden="true">
+              arrow_forward
+            </span>
+          </Link>
+        </div>
       </CardContent>
     </Card>
   )

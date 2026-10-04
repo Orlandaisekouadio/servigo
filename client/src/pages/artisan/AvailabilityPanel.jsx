@@ -1,9 +1,10 @@
-// Panneau « Disponibilité » — activer/désactiver, état répercuté sur le profil public.
+// Panneau « Disponibilité » — l'état est enregistré via PATCH /api/artisans/me
+// et s'affiche sur le profil public et dans les résultats de recherche.
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Switch } from '../../components/ui/switch'
 
-export default function AvailabilityPanel({ available, onToggle }) {
+export default function AvailabilityPanel({ available, onToggle, slug }) {
   return (
     <div className="space-y-6">
       <Card>
@@ -51,7 +52,7 @@ export default function AvailabilityPanel({ available, onToggle }) {
             répercute exactement là où les clients vous trouvent.
           </p>
           <Link
-            to="/artisan/koffi-amani"
+            to={slug ? `/artisan/${slug}` : '/recherche'}
             className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-5 text-sm font-semibold text-on-surface transition-colors hover:border-primary hover:text-primary"
           >
             Consulter mon profil public

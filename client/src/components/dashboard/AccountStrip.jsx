@@ -1,4 +1,4 @@
-// Bande compte compacte — en-tête d'identité commun aux espaces (démo).
+// Bande compte compacte — en-tête d'identité commun aux espaces.
 // L'identité figure déjà dans la sidebar ; ici elle reste présentée en une ligne.
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
 

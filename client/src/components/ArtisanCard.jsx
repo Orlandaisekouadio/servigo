@@ -1,101 +1,123 @@
-function Stars({ rating }) {
-  const full = Math.floor(rating)
-  const hasHalf = rating - full >= 0.5
-  const empty = 5 - full - (hasHalf ? 1 : 0)
+// Carte artisan — rendu unique pour toute la vitrine.
+//
+// Extraite de la page de recherche, qui faisait référence : photo en 16/9,
+// pastille de disponibilité, note, localisation, appel à l'action. Elle sert
+// désormais aussi la page d'accueil, qui avait son propre dessin (avatar rond,
+// bouton WhatsApp, bouton « Appeler ») — deux façons de présenter le même
+// artisan sur deux écrans du même site.
+//
+// La carte ne connaît pas les favoris : les props sont facultatives, ce qui
+// permet à une grille qui en affiche (recherche) de brancher son hook sans que
+// la page d'accueil soit obligée de le faire.
+import { Link } from 'react-router-dom';
+import { assetUrl } from '../lib/api';
+import { noteFr } from '../lib/format';
+import FavouriteButton from './FavouriteButton';
+
+export default function ArtisanCard({
+  artisan: a,
+  favourite,
+  rank,
+  className = '',
+}) {
+  if (!a) return null;
+
+  const lieu = a.location || a.commune;
+  const sansAvis = !(a.reviewsCount > 0);
+
   return (
-    <div className="flex text-amber-400" role="img" aria-label={`Note ${rating} sur 5`}>
-      {Array.from({ length: full }).map((_, i) => (
-        <span key={`f${i}`} className="material-symbols-outlined text-[18px]" aria-hidden="true">
-          star
-        </span>
-      ))}
-      {hasHalf && <span className="material-symbols-outlined text-[18px]" aria-hidden="true">star_half</span>}
-      {Array.from({ length: empty }).map((_, i) => (
-        <span key={`e${i}`} className="material-symbols-outlined text-[18px]" aria-hidden="true">
-          star_border
-        </span>
-      ))}
-    </div>
-  )
-}
-
-function WhatsAppIcon() {
-  return (
-    <svg aria-hidden="true" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
-    </svg>
-  )
-}
-
-export default function ArtisanCard({ artisan }) {
-  return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-lowest shadow-raised">
-      <div className="flex-grow p-6">
-        <div className="mb-4 flex items-start justify-between">
-          <div className="flex gap-4">
-            <div className="relative h-16 w-16 overflow-hidden rounded-full border-2 border-white shadow-sm">
-              <img src={artisan.avatar} alt={artisan.name} loading="lazy" className="h-full w-full object-cover" />
-            </div>
-            <div>
-              <h3 className="flex items-center gap-1 text-[20px] font-semibold text-on-surface">
-                {artisan.name}
-                <span className="material-symbols-outlined text-[18px] text-primary" aria-hidden="true">
-                  verified
-                </span>
-              </h3>
-              <p className="text-sm font-medium text-primary">{artisan.role}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-6 space-y-2 text-sm text-on-surface-variant">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[18px]" aria-hidden="true">location_on</span>
-            <span>{artisan.location}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Stars rating={artisan.rating} />
-            <span className="font-medium text-on-surface">{artisan.rating}</span>
-            <span>({artisan.reviews} avis)</span>
-          </div>
-        </div>
-
-        <div className="mb-4 flex flex-wrap gap-2">
-          {artisan.tags.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full bg-secondary-container px-3 py-1 font-semibold text-on-secondary-container"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="border-t border-outline-variant/20 bg-surface-container-low p-4 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
+    <article
+      className={`flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-lg ${className}`}
+    >
+      <div className="relative">
+        {a.avatarUrl ? (
+          <img
+            src={assetUrl(a.avatarUrl)}
+            alt={`${a.name}, ${a.role}`}
+            loading="lazy"
+            className="h-64 w-full object-cover"
+          />
+        ) : (
           <div
-            className={`h-2.5 w-2.5 rounded-full ${artisan.available ? 'bg-primary' : 'bg-accent'}`}
-          ></div>
-          <span className="font-semibold text-on-surface uppercase">{artisan.availableLabel}</span>
-        </div>
-        <div className="flex gap-2">
-          <button aria-label={`Contacter ${artisan.name} sur WhatsApp`} className="flex h-12 w-12 items-center justify-center rounded-lg bg-whatsapp/10 text-whatsapp transition-colors hover:bg-whatsapp hover:text-white">
-            <WhatsAppIcon />
-          </button>
-          <button
-            aria-label={`Appeler ${artisan.name}`}
-            className={`flex h-12 items-center gap-2 rounded-lg px-4 font-semibold transition-colors ${
-              artisan.available
-                ? 'bg-primary text-on-primary hover:bg-surface-tint'
-                : 'bg-surface-container-highest text-on-surface hover:bg-surface-variant'
-            }`}
+            aria-hidden="true"
+            className="flex h-64 w-full items-center justify-center bg-surface-container-low"
           >
-            <span className="material-symbols-outlined text-[20px]" aria-hidden="true">call</span>
-            <span>Appeler</span>
-          </button>
-        </div>
+            <span className="material-symbols-outlined text-6xl text-slate-300">store</span>
+          </div>
+        )}
+
+        <span
+          className={`absolute top-4 left-4 flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-white shadow ${
+            a.available ? 'bg-primary' : 'bg-accent'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm" aria-hidden="true">
+            {a.available ? 'verified' : 'schedule'}
+          </span>
+          {a.available ? 'Disponible' : a.availableLabel || 'Indisponible'}
+        </span>
+
+        {favourite ? (
+          <FavouriteButton
+            slug={a.slug}
+            name={a.name}
+            isFavorite={favourite.isFavorite}
+            onToggle={favourite.onToggle}
+            pending={favourite.pending}
+            ready={favourite.ready}
+            className="absolute top-4 right-4"
+          />
+        ) : null}
+
+        {/* Rang « mieux noté » : pastille posée par la page d'accueil, hors du
+            flux de la carte pour qu'elle reste réutilisable telle quelle. */}
+        {rank ? (
+          <span
+            className={`absolute bottom-4 left-4 rounded-full px-3.5 py-1.5 text-xs font-bold shadow ${rank.className}`}
+          >
+            {rank.label}
+          </span>
+        ) : null}
       </div>
-    </div>
-  )
+
+      <div className="flex grow flex-col p-7">
+        <h2 className="text-xl font-bold">{a.name}</h2>
+        <p className="mt-1 text-sm text-slate-500">{a.role}</p>
+
+        {sansAvis ? (
+          <p className="mt-3 text-[15px] text-slate-500">Aucun avis pour l&apos;instant</p>
+        ) : (
+          <p className="mt-3 flex items-center gap-1.5 text-[15px]">
+            <span className="material-symbols-outlined text-lg text-accent" aria-hidden="true">
+              star
+            </span>
+            <span className="font-bold">{noteFr(a.rating)}</span>
+            <span className="text-slate-500">({a.reviewsCount} avis)</span>
+            <span className="sr-only">Note {noteFr(a.rating)} sur 5</span>
+          </p>
+        )}
+
+        {lieu ? (
+          <p className="mt-1.5 flex items-center gap-1.5 text-sm text-slate-500">
+            <span className="material-symbols-outlined text-base" aria-hidden="true">
+              location_on
+            </span>
+            {lieu}
+          </p>
+        ) : null}
+
+        {/* `mt-auto` colle le bouton au bas : les cartes d'une même rangée
+            s'alignent même si l'une a une localisation et pas l'autre. Le
+            `pt-1.5` fait l'écart interne, que `mt-auto` neutraliserait. */}
+        {a.slug ? (
+          <Link
+            to={`/artisan/${a.slug}`}
+            className="mt-auto flex min-h-12 items-center justify-center rounded-xl bg-primary px-6 pt-1.5 font-semibold text-white transition-colors hover:bg-primary-deep"
+          >
+            Voir le profil
+          </Link>
+        ) : null}
+      </div>
+    </article>
+  );
 }

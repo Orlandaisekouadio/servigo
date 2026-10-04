@@ -5,6 +5,8 @@ import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import { Reveal, Stagger } from '../components/motion'
 import { itemVariants } from '../components/variants'
+import { getErrorMessage } from '../lib/api'
+import { sendContactMessage } from '../services/messageService'
 
 function WhatsAppIcon({ className = 'h-5 w-5' }) {
   return (
@@ -89,11 +91,11 @@ const faq = [
   },
   {
     q: 'Les profils et les avis sont-ils vérifiés ?',
-    a: "Oui : l'identité et les qualifications affichées sont contrôlées pour chaque profil. Cette démonstration présente des artisans fictifs — vérification, avis et coordonnées sont illustratifs, pour montrer l'expérience réelle.",
+    a: "Oui : l'identité et les qualifications affichées sont contrôlées pour chaque profil publié sur la plateforme.",
   },
   {
     q: 'Comment se passe le paiement ?',
-    a: "Toujours en direct avec l'artisan, après accord : espèces ou Mobile Money (Orange, MTN, Wave, Moov). ServiGo ne détient jamais vos fonds — aucun séquestre n'est en service dans cette démonstration.",
+    a: "Toujours en direct avec l'artisan, après accord : espèces ou Mobile Money (Orange, MTN, Wave, Moov). ServiGo ne détient jamais vos fonds.",
   },
   {
     q: 'Comment devenir artisan partenaire ?',
@@ -103,7 +105,7 @@ const faq = [
         <Link to="/devenir-artisan" className="font-medium text-primary underline">
           Devenir artisan
         </Link>
-        . La démonstration ne crée pas de vrai compte : elle présente le parcours.
+        .
       </>
     ),
   },
@@ -113,7 +115,7 @@ const faq = [
   },
   {
     q: 'Le formulaire de contact fonctionne-t-il ?',
-    a: "Dans cette démonstration, le formulaire ne transmet rien : il illustre le parcours. Pour une réponse réelle, appelez-nous ou écrivez-nous via les coordonnées ci-dessus.",
+    a: "Oui : votre message part directement dans notre boîte de réception et nous répondons sous un jour ouvré.",
   },
 ]
 
@@ -121,6 +123,8 @@ export default function ContactPage() {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' })
   const [errors, setErrors] = useState({})
   const [sent, setSent] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [serverError, setServerError] = useState('')
   const [openFaq, setOpenFaq] = useState([])
   const successRef = useRef(null)
   const summaryRef = useRef(null)
@@ -128,7 +132,10 @@ export default function ContactPage() {
   const toggleFaq = (index) =>
     setOpenFaq((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]))
 
-  const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
+  const set = (field) => (e) => {
+    setForm((prev) => ({ ...prev, [field]: e.target.value }))
+    setServerError('')
+  }
 
   const validateField = (field) => {
     const v = (form[field] ?? '').trim()
@@ -142,13 +149,21 @@ export default function ContactPage() {
   }
 
   // Validation au blur : un champ quitté vide ou invalide est signalé tout de suite.
+  // Les clés sans message sont retirées, sinon le résumé « Veuillez corriger… »
+  // s'afficherait alors qu'aucun champ ne pose problème.
   const onBlur = (field) => () => {
     const err = validateField(field)
-    setErrors((prev) => ({ ...prev, [field]: err || undefined }))
+    setErrors((prev) => {
+      const next = { ...prev }
+      if (err) next[field] = err
+      else delete next[field]
+      return next
+    })
   }
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
+    setServerError('')
     const next = {}
     for (const f of ['name', 'email', 'subject', 'message']) {
       const err = validateField(f)
@@ -160,13 +175,32 @@ export default function ContactPage() {
       requestAnimationFrame(() => summaryRef.current?.focus())
       return
     }
-    setSent(true)
-    requestAnimationFrame(() => successRef.current?.focus())
+
+    setSending(true)
+    try {
+      const res = await sendContactMessage({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        subject: form.subject,
+        message: form.message.trim(),
+      })
+      if (!res?.ok) {
+        setServerError(res?.message || "L'envoi a échoué. Réessayez.")
+        return
+      }
+      setSent(true)
+      requestAnimationFrame(() => successRef.current?.focus())
+    } catch (err) {
+      setServerError(getErrorMessage(err))
+    } finally {
+      setSending(false)
+    }
   }
 
   const reset = () => {
     setForm({ name: '', email: '', subject: '', message: '' })
     setErrors({})
+    setServerError('')
     setSent(false)
   }
 
@@ -385,17 +419,15 @@ export default function ContactPage() {
                       </ul>
                     </div>
                   )}
-                  <div
-                    className="mb-6 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-amber-900"
-                    role="note"
-                  >
-                    <span className="material-symbols-outlined mt-0.5 text-lg" aria-hidden="true">info</span>
-                    <p className="text-xs leading-5">
-                      <strong className="font-semibold">Démonstration :</strong> les messages ne
-                      sont pas transmis — aucune donnée n&apos;est enregistrée. Pour une réponse
-                      réelle, utilisez les coordonnées à droite.
-                    </p>
-                  </div>
+                  {serverError && (
+                    <div
+                      role="alert"
+                      className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3.5 text-red-800"
+                    >
+                      <span className="material-symbols-outlined mt-0.5 text-lg" aria-hidden="true">error</span>
+                      <p className="text-xs leading-5">{serverError}</p>
+                    </div>
+                  )}
 
                   {sent ? (
                     <div
@@ -405,10 +437,9 @@ export default function ContactPage() {
                       className="rounded-xl border border-primary/20 bg-primary-soft/60 p-6 text-center"
                     >
                       <span className="material-symbols-outlined mb-3 text-4xl text-primary" aria-hidden="true">check_circle</span>
-                      <p className="mb-1 text-lg font-bold text-primary-deep">Message bien rempli !</p>
+                      <p className="mb-1 text-lg font-bold text-primary-deep">Message envoyé !</p>
                       <p className="mb-5 text-sm text-on-surface-variant">
-                        C&apos;est la fin de la démonstration : rien n&apos;a été envoyé. Pour une vraie
-                        réponse, appelez-nous ou écrivez-nous via les coordonnées à côté.
+                        Nous vous répondons sous un jour ouvré, du lundi au samedi.
                       </p>
                       <button
                         type="button"
@@ -508,9 +539,10 @@ export default function ContactPage() {
 
                       <button
                         type="submit"
-                        className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-on-primary transition-colors hover:bg-primary-deep sm:w-auto sm:px-10"
+                        disabled={sending}
+                        className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-on-primary transition-colors hover:bg-primary-deep disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-10"
                       >
-                        Envoyer le message
+                        {sending ? 'Envoi…' : 'Envoyer le message'}
                         <span className="material-symbols-outlined text-lg" aria-hidden="true">send</span>
                       </button>
                     </form>
@@ -553,9 +585,6 @@ export default function ContactPage() {
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-6 border-t border-outline-variant/20 pt-4 text-xs text-on-surface-variant">
-                    Coordonnées de démonstration, à remplacer par les valeurs réelles.
-                  </p>
                 </div>
               </Reveal>
             </div>

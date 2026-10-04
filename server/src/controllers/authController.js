@@ -6,6 +6,7 @@ import { ArtisanProfile } from '../models/ArtisanProfile.js';
 import { registerSchema, loginSchema, googleSchema, formatZodError } from '../validators/auth.js';
 import { updateAccountSchema, changePasswordSchema, formatZodError as formatZodErrorWs } from '../validators/workspace.js';
 import { signToken, setAuthCookie, clearAuthCookie, revocationStamp } from '../middlewares/auth.js';
+import { isKnownCommune, isKnownService } from '../utils/referentials.js';
 
 const googleClient = new OAuth2Client(env.googleClientId || undefined);
 
@@ -33,6 +34,20 @@ export async function register(req, res, next) {
     });
     if (exists) {
       return res.status(409).json({ ok: false, message: 'Un compte existe déjà avec cet identifiant.' });
+    }
+
+    // Le catalogue fait foi : une commune hors référentiel produirait un compte
+    // invisible des listes et introuvable à la recherche. Même refus pour une
+    // spécialité inconnue, qui ne pourrait pas être rattachée à un service.
+    if (!(await isKnownCommune(commune))) {
+      return invalid(res, 'Choisissez une zone dans la liste.', [
+        { field: 'commune', message: 'Zone non desservie par ServiGo.' },
+      ]);
+    }
+    if (role === 'artisan' && !(await isKnownService(specialite))) {
+      return invalid(res, 'Choisissez un métier dans la liste.', [
+        { field: 'specialite', message: 'Métier absent du catalogue.' },
+      ]);
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -140,6 +155,15 @@ export async function updateMe(req, res, next) {
     const { name, commune } = parsed.data;
     const update = { commune: commune?.trim() ?? req.user.commune };
     if (name) update.name = name.trim();
+
+    // Commune différente de celle du compte : elle doit exister au catalogue.
+    // La valeur courante est acceptée même désactivée — l'admin peut retirer une
+    // commune de la liste sans verrouiller les comptes qui y sont déjà.
+    if (update.commune !== req.user.commune && !(await isKnownCommune(update.commune))) {
+      return invalid(res, 'Choisissez une zone dans la liste.', [
+        { field: 'commune', message: 'Zone non desservie par ServiGo.' },
+      ]);
+    }
 
     const user = await User.findByIdAndUpdate(req.user._id, { $set: update }, { new: true });
     // Source de vérité du nom : le profil artisan suit le compte.

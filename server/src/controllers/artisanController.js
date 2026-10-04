@@ -15,7 +15,10 @@ const SORTS = {
   new: { createdAt: -1, _id: -1 },
 };
 
-const SERVICE_POPULATE = { path: 'services', select: 'name slug' };
+// La fiche publique affiche nom, icône et description de chaque prestation : le
+// select doit donc les exposer, là où les compteurs de l'espace artisan n'ont
+// besoin que du libellé.
+const SERVICE_POPULATE = { path: 'services', select: 'name slug icon description' };
 
 export async function listArtisans(req, res, next) {
   try {

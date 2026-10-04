@@ -1,24 +1,13 @@
-// Panneau « Artisans favoris » (client) — grille de cartes façon vitrine,
-// construite à partir d'artisans réels du site, retrait en mémoire (démo).
-import { useMemo, useState } from 'react'
+// Panneau « Artisans favoris » (client) — liste et retraits passent par
+// GET /api/favorites et DELETE /api/favorites/:artisanId : chaque compte voit
+// ses propres favoris, pas une sélection figée dans le code.
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { searchArtisans } from '../../data/search'
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import { Badge } from '../../components/ui/badge'
 import Stars from '../../components/dashboard/Stars'
-
-const START = ['mamadou-kone', 'maitre-yao', 'bakary-sangare']
-
-// Visuels de la vitrine (photos d'illustration déjà utilisées sur le site),
-// jamais présentés comme des réalisations des artisans.
-const COVERS = {
-  'mamadou-kone': { photo: '/images/plomberie.jpg', service: 'Dépannage plomberie' },
-  'maitre-yao': { photo: '/images/menuiserie.jpg', service: 'Agencement bois sur mesure' },
-  'bakary-sangare': { photo: '/images/peinture.jpg', service: 'Peinture et finition' },
-  'koffi-amani': { photo: '/images/electricite.jpg', service: 'Dépannage électrique' },
-  'ibrahim-cisse': { photo: '/images/climatisation.jpg', service: 'Climatisation et froid' },
-  'gerard-ngoran': { photo: '/images/maconnerie.jpg', service: 'Maçonnerie et rénovation' },
-}
+import { assetUrl, getErrorMessage } from '../../lib/api'
+import { listFavorites, removeFavorite } from '../../services/socialService'
 
 const SORTS = [
   { key: 'recent', label: 'Ajoutés récemment' },
@@ -26,27 +15,70 @@ const SORTS = [
   { key: 'name', label: 'Nom de A à Z' },
 ]
 
-const initials = (name) =>
+const initials = (name = '') =>
   name
     .split(' ')
+    .filter(Boolean)
     .slice(0, 2)
     .map((w) => w[0])
     .join('')
+    .toUpperCase()
 
 export default function FavoritesPanel() {
-  const [favorites, setFavorites] = useState(() =>
-    searchArtisans.filter((a) => START.includes(a.slug)),
-  )
+  const [favorites, setFavorites] = useState([])
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
   const [sortKey, setSortKey] = useState('recent')
 
+  useEffect(() => {
+    let cancelled = false
+    listFavorites()
+      .then((res) => {
+        if (!cancelled) setFavorites(res?.data ?? [])
+      })
+      .catch((err) => {
+        if (!cancelled) setError(getErrorMessage(err))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const sorted = useMemo(() => {
+    // `recent` respecte l'ordre de l'API (favori le plus récent en tête).
     const list = [...favorites]
-    if (sortKey === 'rating') list.sort((a, b) => b.rating - a.rating)
-    if (sortKey === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+    if (sortKey === 'rating') {
+      list.sort((a, b) => (b.artisan?.rating ?? 0) - (a.artisan?.rating ?? 0))
+    }
+    if (sortKey === 'name') {
+      list.sort((a, b) => (a.artisan?.name ?? '').localeCompare(b.artisan?.name ?? '', 'fr'))
+    }
     return list
   }, [favorites, sortKey])
 
-  const remove = (slug) => setFavorites((list) => list.filter((a) => a.slug !== slug))
+  const remove = async (fav) => {
+    setError('')
+    const previous = favorites
+    setFavorites((list) => list.filter((f) => f._id !== fav._id))
+    try {
+      const res = await removeFavorite(fav.artisan?._id)
+      if (!res?.ok) throw new Error(res?.message || 'Retrait impossible.')
+    } catch (err) {
+      setFavorites(previous)
+      setError(getErrorMessage(err))
+    }
+  }
+
+  if (loading) {
+    return (
+      <p role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
+        Chargement de vos favoris…
+      </p>
+    )
+  }
 
   if (favorites.length === 0) {
     return (
@@ -61,6 +93,11 @@ export default function FavoritesPanel() {
         <p className="mt-1 text-sm text-on-surface-variant">
           Explorez la recherche et enregistrez des artisans de confiance près de chez vous.
         </p>
+        {error && (
+          <p role="alert" className="mt-3 text-sm font-medium text-error">
+            {error}
+          </p>
+        )}
         <Link
           to="/recherche"
           className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-7 text-sm font-semibold text-on-primary transition-colors hover:bg-primary-deep"
@@ -110,56 +147,76 @@ export default function FavoritesPanel() {
         </div>
       </div>
 
-      <p className="mb-4 text-sm text-on-surface-variant">
-        Favoris préchargés depuis des artisans présents sur la vitrine (démo). Le retrait
-        fonctionne en mémoire jusqu&apos;au rechargement.
-      </p>
+      {error && (
+        <p role="alert" className="mb-4 flex items-center gap-1.5 text-sm font-medium text-error">
+          <span className="material-symbols-outlined text-base" aria-hidden="true">
+            error
+          </span>
+          {error}
+        </p>
+      )}
 
       <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-        {sorted.map((a) => {
-          const cover = COVERS[a.slug] ?? { photo: a.avatar, service: a.role }
+        {sorted.map((fav) => {
+          const a = fav.artisan
+          if (!a) return null
           return (
             <li
-              key={a.slug}
+              key={fav._id}
               className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm transition-shadow hover:shadow-floating"
             >
               <div className="relative">
-                <img
-                  src={cover.photo}
-                  alt=""
-                  loading="lazy"
-                  className="h-44 w-full object-cover"
-                />
+                {a.avatarUrl ? (
+                  <img
+                    src={assetUrl(a.avatarUrl)}
+                    alt=""
+                    loading="lazy"
+                    className="h-44 w-full object-cover"
+                  />
+                ) : (
+                  <div
+                    className="flex h-44 w-full items-center justify-center bg-surface-container-low"
+                    aria-hidden="true"
+                  >
+                    <span className="material-symbols-outlined text-5xl text-slate-300">
+                      store
+                    </span>
+                  </div>
+                )}
                 <button
                   type="button"
-                  onClick={() => remove(a.slug)}
+                  onClick={() => remove(fav)}
                   aria-label={`Retirer ${a.name} des favoris`}
-                  title="Retirer des favoris (démo)"
+                  title="Retirer des favoris"
                   className="absolute top-3 left-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-primary shadow-sm transition-colors hover:bg-white"
                 >
                   <span className="material-symbols-outlined text-xl" aria-hidden="true">
                     favorite
                   </span>
                 </button>
-                <span className="absolute top-3 right-3 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
-                  {a.metier}
-                </span>
+                {a.role && (
+                  <span className="absolute top-3 right-3 rounded-full bg-white/95 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
+                    {a.role}
+                  </span>
+                )}
               </div>
               <div className="p-4">
-                <p className="truncate text-sm font-bold text-on-surface">{cover.service}</p>
+                <p className="truncate text-sm font-bold text-on-surface">{a.role}</p>
                 <div className="mt-3 flex items-center gap-2.5">
                   <Avatar className="h-10 w-10 shrink-0">
-                    <AvatarImage src={a.avatar} alt={`Portrait de ${a.name}`} />
+                    {a.avatarUrl && <AvatarImage src={assetUrl(a.avatarUrl)} alt="" />}
                     <AvatarFallback>{initials(a.name)}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-on-surface">{a.name}</p>
-                    <p className="flex items-center gap-1 truncate text-xs text-slate-500">
-                      <span className="material-symbols-outlined text-sm" aria-hidden="true">
-                        location_on
-                      </span>
-                      {a.location}
-                    </p>
+                    {(a.location || a.commune) && (
+                      <p className="flex items-center gap-1 truncate text-xs text-slate-500">
+                        <span className="material-symbols-outlined text-sm" aria-hidden="true">
+                          location_on
+                        </span>
+                        {a.location || a.commune}
+                      </p>
+                    )}
                   </div>
                   <Link
                     to={`/artisan/${a.slug}`}
@@ -168,12 +225,14 @@ export default function FavoritesPanel() {
                     Voir le profil
                   </Link>
                 </div>
-                <div className="mt-2 flex items-center gap-1.5 text-xs text-on-surface-variant">
-                  <Stars rating={a.rating} />
-                  <span>
-                    {a.rating} sur 5 · {a.reviews} avis
-                  </span>
-                </div>
+                {a.reviewsCount > 0 && (
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-on-surface-variant">
+                    <Stars rating={a.rating} />
+                    <span>
+                      {String(a.rating).replace('.', ',')} sur 5 · {a.reviewsCount} avis
+                    </span>
+                  </div>
+                )}
               </div>
             </li>
           )
@@ -182,10 +241,7 @@ export default function FavoritesPanel() {
 
       <div className="mt-6 flex flex-col gap-2 rounded-2xl border border-slate-200/70 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <p>
-          Affichage de {sorted.length} favori{sorted.length > 1 ? 's' : ''} (démo)
-        </p>
-        <p className="text-xs text-slate-500">
-          Photos d&apos;illustration du site, aucune correspondance garantie.
+          Affichage de {sorted.length} favori{sorted.length > 1 ? 's' : ''}
         </p>
       </div>
     </div>

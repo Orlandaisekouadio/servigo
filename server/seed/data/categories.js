@@ -1,3 +1,13 @@
+// Description et image des métiers insérés en base au premier remplissage.
+//
+// Données de démonstration du seed, pas une source de vérité : la page
+// d'accueil, l'inscription et la recherche lisent la collection Service via
+// l'API. Ce fichier ne sert qu'à amorcer `description` et `imageUrl` ; ensuite
+// c'est l'admin qui fait vivre le catalogue (GET/POST/PATCH/DELETE
+// /api/admin/services).
+//
+// `heroImage` et `howItWorksImage` ont été déplacés dans client/src/data/images.js
+// : ce sont des visuels de page, pas des données de service.
 export const categories = [
   {
     id: 1,

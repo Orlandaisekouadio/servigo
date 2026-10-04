@@ -1,14 +1,22 @@
-import { useState } from 'react'
+// Fiche publique d'un artisan — tout le contenu provient de l'API
+// (GET /api/artisans/:slug) : identité, prestations, galerie, zones, avis,
+// coordonnées. Aucune donnée de repli en dur : un artisan qui n'a rien renseigné
+// affiche un état vide explicite plutôt qu'un texte emprunté à un autre profil.
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { koffiProfile } from '../data/search'
-import { Reveal } from '../components/motion'
 import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import GalleryBento from '../components/GalleryBento'
+import FavouriteButton from '../components/FavouriteButton'
+import { useFavorites } from '../auth/useFavorites'
+import { assetUrl, getErrorMessage } from '../lib/api'
+import { getPublicProfile } from '../services/artisanService'
 
-const DEMO_PHONE = '+225 07 12 34 56 89'
-const DEMO_PHONE_INTL = '+2250712345689'
-const DEMO_PHONE_WA = '2250712345689'
+// Numéro ivoirien : 10 chiffres à partir de 0, stocké sans indicatif.
+const telHref = (phone) => `tel:+225${String(phone).replace(/^225/, '').replace(/\D/g, '')}`
+const waHref = (phone) =>
+  `https://wa.me/225${String(phone).replace(/^225/, '').replace(/\D/g, '')}`
+const prettyPhone = (phone) => `+225 ${String(phone).replace(/^225/, '').replace(/(\d{2})(?=\d)/g, '$1 ')}`
 
 function Stars({ rating }) {
   const full = Math.floor(rating)
@@ -17,7 +25,7 @@ function Stars({ rating }) {
     <span
       className="flex items-center gap-0.5 text-[#c2410c]"
       role="img"
-      aria-label={`Note ${rating} sur 5`}
+      aria-label={`Note ${String(rating).replace('.', ',')} sur 5`}
     >
       {Array.from({ length: 5 }).map((_, i) => (
         <span key={i} className="material-symbols-outlined text-base" aria-hidden="true">
@@ -28,37 +36,108 @@ function Stars({ rating }) {
   )
 }
 
+const Empty = ({ children }) => (
+  <p className="rounded-2xl border border-slate-200 bg-surface-container-low p-6 text-sm text-slate-500">
+    {children}
+  </p>
+)
+
 export default function ArtisanProfilePage() {
   const { slug } = useParams()
+  const {
+    isFavorite,
+    toggle: toggleFavorite,
+    pending: pendingFavorite,
+    ready: favoritesReady,
+    error: favoriteError,
+  } = useFavorites()
+  const [loadedSlug, setLoadedSlug] = useState(slug)
+  const [profile, setProfile] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
   const [revealPhone, setRevealPhone] = useState(false)
-  const [form, setForm] = useState({ besoin: '', quartier: '', tel: '' })
-  const [devis, setDevis] = useState(null)
-  const p = {
-    ...koffiProfile,
-    slug,
+
+  // Navigation vers une autre fiche : l'état est remis à zéro pendant le rendu,
+  // pas depuis l'effet — sinon chaque changement de slug coûterait un rendu de
+  // plus et afficherait brièvement la fiche précédente.
+  if (loadedSlug !== slug) {
+    setLoadedSlug(slug)
+    setProfile(null)
+    setError('')
+    setLoading(true)
+    setRevealPhone(false)
   }
 
-  const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }))
+  useEffect(() => {
+    let cancelled = false
+    getPublicProfile(slug)
+      .then((res) => {
+        if (!cancelled) setProfile(res?.data ?? null)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(getErrorMessage(err))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [slug])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-surface font-sans text-on-surface">
+        <Navbar />
+        <main className="mx-auto max-w-[1200px] px-4 py-16 text-center md:px-8">
+          <p role="status" className="text-sm text-slate-500">
+            Chargement de la fiche…
+          </p>
+        </main>
+      </div>
+    )
+  }
+
+  if (error || !profile) {
+    return (
+      <div className="min-h-screen bg-surface font-sans text-on-surface">
+        <Navbar />
+        <main className="mx-auto max-w-[1200px] px-4 py-16 text-center md:px-8">
+          <span className="material-symbols-outlined mb-3 text-5xl text-slate-300" aria-hidden="true">
+            store</span>
+          <h1 className="font-display mb-2 text-2xl font-bold">
+            {error ? 'Fiche indisponible' : 'Artisan introuvable'}
+          </h1>
+          <p className="mb-6 text-sm text-slate-500">
+            {error || "Cette fiche n'existe plus ou a été retirée de la vitrine."}
+          </p>
+          <Link
+            to="/recherche"
+            className="inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-8 text-sm font-semibold text-white transition-colors hover:bg-primary-deep"
+          >
+            Trouver un artisan
+          </Link>
+        </main>
+        <Footer />
+      </div>
+    )
+  }
+
+  const p = profile
+  const gallery = p.gallery ?? []
+  const zones = p.zones ?? []
+  const reviews = p.reviews ?? []
+  const services = p.services ?? []
+  const phone = p.phone || p.whatsapp || ''
+  const memberSince = new Date(p.createdAt).toLocaleDateString('fr-FR', {
+    month: 'long',
+    year: 'numeric',
+  })
 
   return (
     <div className="min-h-screen bg-surface pb-24 font-sans text-on-surface antialiased lg:pb-0">
       <Navbar />
       <main className="mx-auto max-w-[1200px] px-4 py-8 md:px-8">
-        {/* Bannière de démonstration */}
-        <section
-          className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900"
-          role="note"
-        >
-          <span className="material-symbols-outlined mt-0.5 text-lg" aria-hidden="true">
-            info
-          </span>
-          <p className="text-sm leading-6">
-            <strong className="font-bold">Profil de démonstration.</strong>{' '}
-            Cette page illustre la structure d&apos;un profil artisan. Le contenu est fictif :
-            aucune mise en relation réelle, aucun avis, aucun chiffre vérifié.
-          </p>
-        </section>
-
         {/* Breadcrumb */}
         <nav aria-label="Fil d'Ariane" className="mb-6 flex flex-wrap items-center gap-1 text-sm text-slate-500">
           <Link to="/" className="flex items-center rounded py-3 hover:text-primary">
@@ -77,81 +156,119 @@ export default function ArtisanProfilePage() {
         </nav>
 
         {/* Hero card */}
-        <Reveal>
-          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="h-28 md:h-36">
-              <img
-                src={p.cover}
-                alt="Chantier électrique illustrant le métier"
-                className="h-full w-full object-cover"
-              />
-            </div>
-            <div className="px-6 pb-6 md:px-10 md:pb-10">
-              <div className="-mt-14 mb-5 flex flex-col items-start gap-4 md:-mt-16 md:flex-row md:items-end">
+        {p.coverUrl && (
+          <div className="h-28 overflow-hidden rounded-t-2xl md:h-36">
+            <img
+              src={assetUrl(p.coverUrl)}
+              alt={`Chantier réalisé par ${p.name}`}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        )}
+        <section
+          className={`bg-white shadow-sm ${p.coverUrl ? 'rounded-b-2xl border border-t-0 border-slate-200' : 'rounded-2xl border border-slate-200'}`}
+        >
+          <div className="px-6 pb-6 md:px-10 md:pb-10">
+            <div className={`flex flex-col items-start gap-4 md:flex-row md:items-end ${p.coverUrl ? '-mt-14 mb-5 md:-mt-16' : 'mb-5 pt-8'}`}>
+              {p.avatarUrl ? (
                 <img
-                  src={p.avatar}
+                  src={assetUrl(p.avatarUrl)}
                   alt={p.name}
                   className="h-28 w-28 rounded-2xl border-4 border-white object-cover shadow-lg md:h-36 md:w-36"
                 />
-                <div>
-                  <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">
-                    {p.name}
-                  </h1>
+              ) : (
+                <span
+                  className="flex h-28 w-28 items-center justify-center rounded-2xl border-4 border-white bg-primary-soft text-4xl font-bold text-primary-deep shadow-lg md:h-36 md:w-36"
+                  aria-hidden="true"
+                >
+                  {p.name
+                    .split(' ')
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((w) => w[0])
+                    .join('')
+                    .toUpperCase()}
+                </span>
+              )}
+              <div>
+                <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">
+                  {p.name}
+                </h1>
+                <div className="mt-3">
+                  <FavouriteButton
+                    slug={p.slug}
+                    name={p.name}
+                    variant="inline"
+                    isFavorite={isFavorite(p.slug)}
+                    onToggle={toggleFavorite}
+                    pending={pendingFavorite}
+                    ready={favoritesReady}
+                  />
+                </div>
+                {favoriteError && (
+                  <p role="alert" className="mt-2 text-sm text-amber-800">
+                    Favori non enregistré : {favoriteError}
+                  </p>
+                )}
+                {p.role && (
                   <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-slate-500">
                     <span className="material-symbols-outlined text-base" aria-hidden="true">
                       bolt
                     </span>
                     {p.role}
                   </p>
-                </div>
+                )}
               </div>
+            </div>
 
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                  {(p.location || p.commune) && (
                     <span className="flex items-center gap-1 text-sm text-slate-500">
                       <span className="material-symbols-outlined text-base" aria-hidden="true">
                         location_on
                       </span>
-                      {p.location}
+                      {p.location || p.commune}
                     </span>
+                  )}
+                  {p.reviewsCount > 0 && (
                     <span className="flex items-center gap-1.5">
                       <Stars rating={p.rating} />
                       <span className="text-sm font-semibold text-slate-600">
-                        Note illustrée
+                        {String(p.rating).replace('.', ',')} · {p.reviewsCount}{' '}
+                        {p.reviewsCount > 1 ? 'avis' : 'avis'}
                       </span>
                     </span>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-xs font-bold text-primary-deep">
-                      <span className="material-symbols-outlined text-sm" aria-hidden="true">
-                        schedule
-                      </span>
-                      Disponible maintenant (démo)
-                    </span>
-                  </div>
+                  )}
                 </div>
 
-                <div className="shrink-0 max-w-[280px]">
-                  <a
-                    href="#demande-devis"
-                    className="flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 font-semibold text-white transition-colors hover:bg-primary-deep"
-                  >
-                    <span className="material-symbols-outlined text-lg" aria-hidden="true">
-                      request_quote
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {p.verified && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-xs font-bold text-primary-deep">
+                      <span className="material-symbols-outlined text-sm" aria-hidden="true">
+                        verified
+                      </span>
+                      Identité vérifiée
                     </span>
-                    Demander un devis
-                  </a>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    Cette action illustre le parcours : aucune demande n&apos;est réellement
-                    transmise sur ce profil de démonstration.
-                  </p>
+                  )}
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                      p.available
+                        ? 'bg-primary-soft text-primary-deep'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm" aria-hidden="true">
+                      schedule
+                    </span>
+                    {p.availableLabel || (p.available ? 'Disponible' : 'Indisponible')}
+                  </span>
                 </div>
               </div>
             </div>
-          </section>
-        </Reveal>
+          </div>
+        </section>
 
         <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_360px]">
           {/* Colonne principale */}
@@ -164,348 +281,257 @@ export default function ArtisanProfilePage() {
                 </span>
                 Présentation
               </h2>
-              <p className="leading-7 text-slate-600">
-                Je suis <strong>{p.name}</strong>, technicien électricien avec plus de 8 années
-                d&apos;expérience sur les chantiers résidentiels de standing, les immeubles de
-                bureaux et les résidences privées du district d&apos;Abidjan. Diplômé de
-                l&apos;Institut National Polytechnique Félix Houphouët-Boigny (INP-HB) et titulaire
-                du Certificat d&apos;Aptitude Professionnelle (CAP Électricité Bâtiment),
-                j&apos;ai fait de la sécurité des installations et de la rigueur d&apos;exécution
-                mes deux exigences absolues. En Côte d&apos;Ivoire, les variations de tension et
-                les surtensions du réseau nécessitent des équipements de protection adéquats : je
-                conçois et sécurise vos réseaux électriques selon les normes internationales NF C
-                15-100. Qu&apos;il s&apos;agisse d&apos;un dépannage urgent, de la réhabilitation
-                totale d&apos;un tableau divisionnaire ou de l&apos;installation de dispositifs
-                solaires et d&apos;onduleurs, chaque intervention est documentée par un rapport
-                technique remis au client.
-              </p>
-            </section>
-
-            {/* Spécialités */}
-            <section>
-              <h2 className="font-display mb-5 text-2xl font-bold">Spécialités & Prestations</h2>
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                {p.services.map((s) => (
-                  <div
-                    key={s.title}
-                    className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
-                  >
-                    <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white">
-                      <span className="material-symbols-outlined" aria-hidden="true">
-                        {s.icon}
-                      </span>
-                    </span>
-                    <h3 className="font-display mb-2 text-lg font-bold">{s.title}</h3>
-                    <p className="mb-4 text-sm leading-6 text-slate-500">{s.text}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {s.tags.map((t) => (
-                        <span
-                          key={t}
-                          className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600"
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* Galerie — photos de chantiers en bento grid */}
-            <section>
-              <h2 className="font-display mb-1 text-2xl font-bold">Galerie — chantiers récents</h2>
-              <p className="mb-5 text-sm text-slate-500">
-                Références d&apos;exemple : photos d&apos;illustration (Pexels), aucune
-                correspondance garantie avec un chantier réel. Cliquez sur une photo pour
-                l&apos;agrandir.
-              </p>
-              {p.gallery?.length ? (
-                <GalleryBento items={p.gallery} />
+              {p.bio ? (
+                <p className="leading-7 whitespace-pre-line text-slate-600">{p.bio}</p>
               ) : (
-                <p className="text-sm text-slate-500">Aucune réalisation renseignée.</p>
+                <Empty>
+                  {p.name} n&apos;a pas encore rédigé de présentation. Utilisez le contact
+                  ci-contre pour en savoir plus sur son travail.
+                </Empty>
               )}
             </section>
 
-            {/* Avis — exemples illustratifs */}
+            {/* Spécialités */}
+            {services.length > 0 && (
+              <section>
+                <h2 className="font-display mb-5 text-2xl font-bold">Spécialités &amp; Prestations</h2>
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  {services.map((s) => (
+                    <div
+                      key={s.slug ?? s._id}
+                      className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+                    >
+                      <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-white">
+                        <span className="material-symbols-outlined" aria-hidden="true">
+                          {s.icon || 'handyman'}
+                        </span>
+                      </span>
+                      <h3 className="font-display mb-2 text-lg font-bold">{s.name}</h3>
+                      {s.description && (
+                        <p className="text-sm leading-6 text-slate-500">{s.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Zones d'intervention */}
+            {zones.length > 0 && (
+              <section>
+                <h2 className="font-display mb-5 text-2xl font-bold">
+                  Zones d&apos;intervention
+                </h2>
+                <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {zones.map((z) => (
+                    <li
+                      key={z._id}
+                      className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                    >
+                      <span className="material-symbols-outlined text-primary" aria-hidden="true">
+                        {z.icon || 'my_location'}
+                      </span>
+                      <div>
+                        <p className="font-bold">{z.title}</p>
+                        {z.text && <p className="mt-0.5 text-sm text-slate-500">{z.text}</p>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {/* Galerie */}
+            <section>
+              <h2 className="font-display mb-1 text-2xl font-bold">Galerie — chantiers récents</h2>
+              <p className="mb-5 text-sm text-slate-500">
+                Photos de ses réalisations récentes. Cliquez sur une photo pour l&apos;agrandir.
+              </p>
+              {gallery.length > 0 ? (
+                <GalleryBento
+                  items={gallery.map((g) => ({
+                    photo: assetUrl(g.imageUrl),
+                    title: g.title,
+                    subtitle: g.subtitle || g.text || '',
+                  }))}
+                />
+              ) : (
+                <Empty>Aucune réalisation photographiée pour le moment.</Empty>
+              )}
+            </section>
+
+            {/* Avis clients */}
             <section>
               <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
                 <div>
-                  <h2 className="font-display text-2xl font-bold">
-                    Avis (exemples illustratifs)
-                  </h2>
+                  <h2 className="font-display text-2xl font-bold">Avis clients</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Retours fictifs rédigés pour montrer la rubrique : aucun n&apos;est réel, ni
-                    vérifié, ni lié à une intervention.
+                    Retours de clients ayant fait appel à cet artisan.
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-5">
-                {p.reviews.map((r) => (
-                  <article
-                    key={r.author}
-                    className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-                  >
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-soft font-bold text-primary-deep">
-                          {r.author[0]}
-                          {r.author[1]}
-                        </span>
-                        <div>
-                          <p className="font-bold">{r.author}</p>
-                          <p className="text-xs text-slate-500">{r.location}</p>
+              {reviews.length === 0 ? (
+                <Empty>
+                  {p.reviewsCount > 0
+                    ? `Aucun de ses ${p.reviewsCount} avis n'est consultable ici : seuls les avis publiés directement sur ServiGo sont affichés sur cette page.`
+                    : "Aucun avis publié pour le moment. Les avis laissés par les clients s'afficheront ici."}
+                </Empty>
+              ) : (
+                <div className="space-y-5">
+                  {reviews.map((r) => (
+                    <article
+                      key={r._id}
+                      className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                    >
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-soft font-bold text-primary-deep">
+                            {(r.authorName || '?').slice(0, 2).toUpperCase()}
+                          </span>
+                          <div>
+                            <p className="font-bold">{r.authorName}</p>
+                            {r.location && <p className="text-xs text-slate-500">{r.location}</p>}
+                          </div>
                         </div>
+                        <Stars rating={r.rating} />
                       </div>
-                      <Stars rating={r.rating} />
-                    </div>
-                    <p className="text-sm leading-6 text-slate-600">{r.text}</p>
-                    <p className="mt-3 flex items-center gap-1 text-xs font-semibold text-primary">
-                      <span className="material-symbols-outlined text-sm" aria-hidden="true">
-                        handyman
-                      </span>
-                      Prestation : {r.service}
+                      <p className="text-sm leading-6 text-slate-600">{r.text}</p>
+                      {r.service && (
+                        <p className="mt-3 flex items-center gap-1 text-xs font-semibold text-primary">
+                          <span className="material-symbols-outlined text-sm" aria-hidden="true">
+                            handyman
+                          </span>
+                          Prestation : {r.service}
+                        </p>
+                      )}
+                    </article>
+                  ))}
+                  {/* Le total affiché en tête de page est l'ancienneté de
+                      l'artisan : on ne laisse pas croire que la liste est
+                      complète quand elle ne l'est pas. */}
+                  {p.reviewsCount > reviews.length && (
+                    <p className="text-sm text-slate-500">
+                      {p.reviewsCount - reviews.length} avis antérieurs ne sont pas
+                      consultables en ligne.
                     </p>
-                  </article>
-                ))}
-              </div>
+                  )}
+                </div>
+              )}
             </section>
           </div>
 
-          {/* Colonne latérale — contact & devis (remontée sur mobile) */}
+          {/* Colonne latérale — contact (remontée sur mobile) */}
           <aside className="order-1 space-y-6 lg:order-2">
             {/* Carte contact */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-4 flex items-center gap-2">
-                <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary"></span>
-                </span>
-                <span className="text-sm font-bold text-primary-deep">
-                  Disponible maintenant (démo)
-                </span>
-              </div>
+              {p.available && (
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5" aria-hidden="true">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+                  </span>
+                  <span className="text-sm font-bold text-primary-deep">
+                    {p.availableLabel || 'Disponible'}
+                  </span>
+                </div>
+              )}
               <h2 className="font-display mb-1 text-xl font-bold">Contacter {p.name}</h2>
               <p className="mb-5 text-sm text-slate-500">
-                Numéros illustratifs : les liens s&apos;ouvrent, mais aucune ligne réelle
-                n&apos;est derrière ce profil de démonstration.
+                Contactez l&apos;artisan directement par téléphone ou WhatsApp.
               </p>
 
-              {revealPhone ? (
-                <a
-                  href={`tel:${DEMO_PHONE_INTL}`}
-                  className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-white transition-colors hover:bg-primary-deep"
-                >
-                  <span className="material-symbols-outlined text-lg" aria-hidden="true">
-                    call
-                  </span>
-                  {DEMO_PHONE}
-                </a>
+              {phone ? (
+                <>
+                  {revealPhone ? (
+                    <a
+                      href={telHref(phone)}
+                      className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-white transition-colors hover:bg-primary-deep"
+                    >
+                      <span className="material-symbols-outlined text-lg" aria-hidden="true">
+                        call
+                      </span>
+                      {prettyPhone(phone)}
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => setRevealPhone(true)}
+                      className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-white transition-colors hover:bg-primary-deep"
+                    >
+                      <span className="material-symbols-outlined text-lg" aria-hidden="true">
+                        call
+                      </span>
+                      Afficher le numéro
+                    </button>
+                  )}
+                  {p.whatsapp && (
+                    <a
+                      href={waHref(p.whatsapp)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#075e54] py-3 font-semibold text-white transition-opacity hover:opacity-90"
+                    >
+                      <span className="material-symbols-outlined text-lg" aria-hidden="true">
+                        chat
+                      </span>
+                      WhatsApp
+                    </a>
+                  )}
+                </>
               ) : (
-                <button
-                  onClick={() => setRevealPhone(true)}
-                  className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-white transition-colors hover:bg-primary-deep"
-                >
-                  <span className="material-symbols-outlined text-lg" aria-hidden="true">
-                    call
-                  </span>
-                  Afficher le numéro
-                </button>
+                <Empty>
+                  Cet artisan n&apos;a pas encore publié de coordonnées. Revenez plus tard ou
+                  contactez-le via le formulaire du site.
+                </Empty>
               )}
-              <a
-                href={`https://wa.me/${DEMO_PHONE_WA}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#075e54] py-3 font-semibold text-white transition-opacity hover:opacity-90"
-              >
-                <span className="material-symbols-outlined text-lg" aria-hidden="true">
-                  chat
-                </span>
-                WhatsApp
-              </a>
 
               <div className="mt-5 rounded-xl bg-primary-soft/60 p-4">
                 <p className="mb-1 flex items-center gap-2 text-sm font-bold text-primary-deep">
                   <span className="material-symbols-outlined text-base" aria-hidden="true">
                     info
                   </span>
-                  Paiement & garantie (démo)
+                  Paiement
                 </p>
-                <p className="text-xs leading-5 text-slate-600">
-                  Sur ce profil de démonstration, le paiement se ferait directement avec
-                  l&apos;artisan. La garantie séquestre ServiGo n&apos;est pas active ici.
+                <p className="text-sm leading-6 text-slate-600">
+                  {p.paymentMeans?.length
+                    ? `Moyens annoncés : ${p.paymentMeans.join(', ')}.`
+                    : 'Les modalités de paiement se règlent directement avec l’artisan, après accord.'}{' '}
+                  ServiGo ne détient jamais vos fonds et n&apos;intervient pas dans le règlement.
                 </p>
               </div>
             </div>
 
-            {/* Demande de devis */}
-            <div
-              id="demande-devis"
-              className="scroll-mt-36 rounded-2xl border border-primary/30 bg-white p-6 shadow-sm"
-            >
-              <h2 className="font-display mb-1 text-xl font-bold">Demande de devis express</h2>
-              <p className="mb-5 text-sm text-slate-500">
-                Simulation : aucune demande n&apos;est transmise sur cette démo.
-              </p>
-
-              {devis ? (
-                <div role="status" className="rounded-xl bg-primary-soft p-5 text-center">
-                  <span className="material-symbols-outlined mb-2 inline-block text-4xl text-primary" aria-hidden="true">
-                    info
-                  </span>
-                  <p className="font-bold text-primary-deep">Simulation de démonstration</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Aucune demande n&apos;a été transmise : cette page illustre uniquement le
-                    parcours de demande de devis.
-                  </p>
-                  <ul className="mx-auto mt-4 max-w-xs space-y-1 text-left text-sm text-slate-600">
-                    <li>
-                      <strong>Besoin :</strong> {devis.besoin}
-                    </li>
-                    <li>
-                      <strong>Quartier :</strong> {devis.quartier}
-                    </li>
-                    <li>
-                      <strong>Contact :</strong> {devis.tel}
-                    </li>
-                  </ul>
-                  <div className="mt-5 flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setDevis(null)}
-                      className="flex-1 rounded-xl border border-primary bg-white py-3 text-sm font-semibold text-primary hover:bg-primary-soft"
-                    >
-                      Modifier
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm({ besoin: '', quartier: '', tel: '' })
-                        setDevis(null)
-                      }}
-                      className="flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-white hover:bg-primary-deep"
-                    >
-                      Réinitialiser
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    setDevis(form)
-                  }}
-                  className="space-y-4"
-                >
-                  <div>
-                    <label htmlFor="besoin" className="mb-2 block text-sm font-semibold">
-                      Type de besoin
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="besoin"
-                        name="besoin"
-                        required
-                        value={form.besoin}
-                        onChange={update('besoin')}
-                        className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-3 pr-10 pl-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                      >
-                        <option value="" disabled>
-                          Sélectionnez...
-                        </option>
-                        <option>Dépannage d&apos;urgence (panne / disjonction)</option>
-                        <option>Rénovation ou réfection de tableau</option>
-                        <option>Installation onduleur / stabilisateur</option>
-                        <option>Autre installation électrique</option>
-                      </select>
-                      <span
-                        className="material-symbols-outlined pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-slate-500"
-                        aria-hidden="true"
-                      >
-                        expand_more
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="quartier" className="mb-2 block text-sm font-semibold">
-                      Votre quartier à Abidjan
-                    </label>
-                    <input
-                      id="quartier"
-                      name="quartier"
-                      type="text"
-                      required
-                      value={form.quartier}
-                      onChange={update('quartier')}
-                      placeholder="Ex : Riviera Bonoumin"
-                      autoComplete="address-level2"
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="tel" className="mb-2 block text-sm font-semibold">
-                      Votre numéro de contact
-                    </label>
-                    <input
-                      id="tel"
-                      name="tel"
-                      type="tel"
-                      required
-                      value={form.tel}
-                      onChange={update('tel')}
-                      placeholder="+225 07 ..."
-                      autoComplete="tel"
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-white transition-colors hover:bg-primary-deep"
-                  >
-                    Envoyer ma demande à {p.name.split(' ')[0]}
-                    <span className="material-symbols-outlined text-lg" aria-hidden="true">
-                      send
-                    </span>
-                  </button>
-                  <p className="text-xs leading-5 text-slate-500">
-                    Démo : le bouton valide le formulaire localement et n&apos;envoie rien.
-                  </p>
-                </form>
-              )}
-            </div>
-
             {/* Informations pratiques */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="font-display mb-4 text-lg font-bold">
-                Informations du profil (démo)
-              </h2>
+              <h2 className="font-display mb-4 text-lg font-bold">Informations du profil</h2>
               <ul className="space-y-3 text-sm">
                 <li className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-primary" aria-hidden="true">
-                    school
+                    calendar_month
                   </span>
                   <span>
-                    <span className="block font-semibold">Formation</span>
-                    <span className="text-slate-500">CAP Élec. — illustratif</span>
+                    <span className="block font-semibold">Membre depuis</span>
+                    <span className="text-slate-500">{memberSince}</span>
                   </span>
                 </li>
-                <li className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-primary" aria-hidden="true">
-                    account_balance_wallet
-                  </span>
-                  <span>
-                    <span className="block font-semibold">Moyens de paiement</span>
-                    <span className="text-slate-500">Wave, Orange Money, Espèces</span>
-                  </span>
-                </li>
+                {services[0] && (
+                  <li className="flex items-start gap-3">
+                    <span className="material-symbols-outlined text-primary" aria-hidden="true">
+                      handyman
+                    </span>
+                    <span>
+                      <span className="block font-semibold">Métier principal</span>
+                      <span className="text-slate-500">{services[0].name}</span>
+                    </span>
+                  </li>
+                )}
                 <li className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-primary" aria-hidden="true">
                     receipt_long
                   </span>
                   <span>
                     <span className="block font-semibold">Facture</span>
-                    <span className="text-slate-500">Sur demande</span>
+                    <span className="text-slate-500">Demandez-la à l&apos;artisan</span>
                   </span>
                 </li>
               </ul>
@@ -515,28 +541,21 @@ export default function ArtisanProfilePage() {
       </main>
 
       {/* Barre d'action mobile persistante */}
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-[1200px] gap-3">
-          <a
-            href={`tel:${DEMO_PHONE_INTL}`}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-white hover:bg-primary-deep"
-          >
-            <span className="material-symbols-outlined text-base" aria-hidden="true">
-              call
-            </span>
-            Appeler
-          </a>
-          <a
-            href="#demande-devis"
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-primary bg-primary-soft py-3 text-sm font-semibold text-primary-deep hover:bg-primary-soft"
-          >
-            <span className="material-symbols-outlined text-base" aria-hidden="true">
-              edit_note
-            </span>
-            Demander un devis
-          </a>
+      {phone && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 p-3 backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-[1200px] gap-3">
+            <a
+              href={telHref(phone)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-white hover:bg-primary-deep"
+            >
+              <span className="material-symbols-outlined text-base" aria-hidden="true">
+                call
+              </span>
+              Appeler
+            </a>
+          </div>
         </div>
-      </div>
+      )}
 
       <Footer />
     </div>

@@ -1,4 +1,5 @@
 import { Service } from '../models/Service.js';
+import { Commune } from '../models/Commune.js';
 import { ArtisanProfile } from '../models/ArtisanProfile.js';
 import { User } from '../models/User.js';
 import { Review } from '../models/Review.js';
@@ -18,6 +19,8 @@ import {
   listReviewsQuerySchema,
   createServiceSchema,
   updateServiceSchema,
+  createCommuneSchema,
+  updateCommuneSchema,
   updateArtisanByAdminSchema,
   updateUserByAdminSchema,
   idParams,
@@ -40,11 +43,18 @@ export async function getStats(_req, res, next) {
       await Promise.all([
         User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
         ArtisanProfile.countDocuments(),
-        ArtisanProfile.countDocuments({ verified: true, hidden: false }),
-        Service.countDocuments({ active: true }),
+        ArtisanProfile.countDocuments({ verified: true, hidden: { $ne: true } }),
+        // `{ $ne: false }` et non `{ active: true }` : ce second filtre ignore
+        // les métiers créés avant l'existence du champ, qui seraient comptés
+        // comme désactivés alors qu'ils sont proposés partout ailleurs.
+        Service.countDocuments({ active: { $ne: false } }),
         Review.countDocuments(),
         Favorite.countDocuments(),
-        ArtisanProfile.countDocuments({ verified: false, hidden: false }),
+        // `{ $ne: true }` plutôt que `false` : les fiches créées avant
+        // l'existence du champ n'ont ni `verified` ni `hidden`. Un filtre
+        // `= false` les compte à tort comme des fiches explicitement en attente,
+        // et les laisse passer pour « attestées » dans les autres filtres.
+        ArtisanProfile.countDocuments({ verified: { $ne: true }, hidden: { $ne: true } }),
         ArtisanProfile.countDocuments({ hidden: true }),
       ]);
     const byRole = { client: 0, artisan: 0, admin: 0, ...Object.fromEntries(roles.map((r) => [r._id, r.count])) };
@@ -163,13 +173,113 @@ export async function deleteService(req, res, next) {
 
 // --- Artisans -----------------------------------------------------------
 
+// --- Communes -----------------------------------------------------------
+
+export async function listCommunes(_req, res, next) {
+  try {
+    const data = await Commune.find({}).sort({ active: -1, position: 1, name: 1 }).lean();
+    // Une commune désactivée reste habitée par des profils : le dire évite que
+    // l'admin la supprime et casse la cohérence des fiches.
+    const counts = await ArtisanProfile.aggregate([
+      { $match: { commune: { $nin: ['', null] } } },
+      { $group: { _id: '$commune', count: { $sum: 1 } } },
+    ]);
+    const byName = new Map(counts.map((c) => [c._id, c.count]));
+    return res.json({
+      ok: true,
+      data: data.map((c) => ({ ...c, artisansCount: byName.get(c.name) ?? 0 })),
+      total: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createCommune(req, res, next) {
+  try {
+    const parsed = createCommuneSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return invalid(res, 'Veuillez corriger les champs.', formatZodError(parsed.error));
+    }
+    const existing = await Commune.findOne({ name: parsed.data.name });
+    if (existing) {
+      return res.status(409).json({ ok: false, message: 'Cette commune existe déjà.' });
+    }
+    const data = await Commune.create(parsed.data);
+    await audit(req, 'commune.create', 'commune', data._id, { name: data.name });
+    return res.status(201).json({ ok: true, data });
+  } catch (err) {
+    if (err?.code === 11000) {
+      return res.status(409).json({ ok: false, message: 'Cette commune existe déjà.' });
+    }
+    next(err);
+  }
+}
+
+export async function updateCommune(req, res, next) {
+  try {
+    const params = idParams.safeParse(req.params);
+    if (!params.success) return invalid(res, 'Identifiant invalide.');
+    const { id } = params.data;
+    // Renommer une commune国有资产 invalid. Le nom est une clé métier
+    // (ArtisanProfile.commune), pas un libellé : on le refuse franchement
+    // plutôt que de laisser des profils orphelins.
+    if ('name' in (req.body ?? {})) {
+      return invalid(
+        res,
+        'Le nom d’une commune est figé : des profils artisan y sont rattachés. Créez-la, transférez les artisans, puis désactivez-la.',
+        [{ field: 'name', message: 'Renommage non autorisé.' }],
+      );
+    }
+    const parsed = updateCommuneSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return invalid(res, 'Veuillez corriger les champs.', formatZodError(parsed.error));
+    }
+    const data = await Commune.findByIdAndUpdate(id, { $set: parsed.data }, { new: true });
+    if (!data) return res.status(404).json({ ok: false, message: 'Commune introuvable.' });
+    await audit(req, 'commune.update', 'commune', data._id, parsed.data);
+    return res.json({ ok: true, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteCommune(req, res, next) {
+  try {
+    const params = idParams.safeParse(req.params);
+    if (!params.success) return invalid(res, 'Identifiant invalide.');
+    const { id } = params.data;
+    const commune = await Commune.findById(id);
+    if (!commune) return res.status(404).json({ ok: false, message: 'Commune introuvable.' });
+
+    const used = await ArtisanProfile.countDocuments({ commune: commune.name });
+    if (used > 0) {
+      return res.status(409).json({
+        ok: false,
+        message: `Commune utilisée par ${used} artisan(s) : désactivez-la au lieu de la supprimer.`,
+        details: [{ field: 'active', message: 'Passez active à false.' }],
+      });
+    }
+    await commune.deleteOne();
+    await audit(req, 'commune.delete', 'commune', id, { name: commune.name });
+    return res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// --- Artisans -----------------------------------------------------------
+
 export async function listArtisans(req, res, next) {
   try {
     const parsed = listArtisansQuerySchema.safeParse(req.query);
     if (!parsed.success) return invalid(res, 'Paramètres invalides.');
     const { q, status, page, limit } = parsed.data;
     const filter = {};
-    if (status === 'pending') filter.verified = false;
+    // Même règle que les compteurs : une fiche sans le champ est traitée comme
+    // non attestée et non masquée, sinon le filtre « en attente » ne
+    // remonterait que les fiches qui portent explicitement `verified: false`.
+    if (status === 'pending') filter.verified = { $ne: true };
     if (status === 'verified') filter.verified = true;
     if (status === 'hidden') filter.hidden = true;
     if (q) {

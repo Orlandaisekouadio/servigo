@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { howItWorksImage } from '../data/categories'
+import { howItWorksImage } from '../data/images'
 import { Reveal, Stagger } from './motion'
 import { itemVariants } from './variants'
 
